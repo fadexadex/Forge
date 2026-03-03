@@ -12,7 +12,9 @@
 }
 
 /* Base styles */
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   width: 100%;
 }
@@ -26,7 +28,12 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   font-weight: 600;
   letter-spacing: -0.025em;
 }
@@ -58,14 +65,24 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .react-flow__edge-path {
-  stroke: #a3a3a3;
+  stroke: #d4d4d4;
   stroke-width: 2;
 }
 
+/* Remove default node styling so our custom shapes shine */
+.react-flow__node {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  width: auto !important;
+}
+
 .react-flow__handle {
-  width: 12px !important;
-  height: 12px !important;
-  background-color: #d4d4d4 !important;
+  width: 14px !important;
+  height: 14px !important;
+  background-color: #a3a3a3 !important;
   border: 2px solid #ffffff !important;
 }
 
@@ -94,4 +111,36 @@ h1, h2, h3, h4, h5, h6 {
 
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
   background: #737373;
+}
+
+/* NDV slide-in animation */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in-right 0.2s ease-out;
+}
+
+/* Connection status pulse animation */
+@keyframes connection-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.connection-pulse {
+  animation: connection-pulse 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
 }

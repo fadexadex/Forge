@@ -1,6 +1,7 @@
-import { memo, useState } from 'react';
+import { memo } from 'react';
 import { getBezierPath, EdgeLabelRenderer } from 'reactflow';
 import { useMcpStore } from '../../stores/mcpStore';
+import { PlusIcon } from './shared/NodeIcons';
 
 export const CustomEdge = memo(({
   id,
@@ -17,7 +18,6 @@ export const CustomEdge = memo(({
   style = {},
   markerEnd,
 }) => {
-  const [isHovered, setIsHovered] = useState(false);
   const { openAddNodePicker } = useMcpStore();
 
   const [edgePath, labelX, labelY] = getBezierPath({
@@ -49,22 +49,18 @@ export const CustomEdge = memo(({
         fill="none"
         stroke="transparent"
         strokeWidth={20}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
       />
 
       {/* Visible edge path */}
       <path
         id={id}
         style={style}
-        className={`react-flow__edge-path fill-none stroke-2 transition-colors ${
-          isHovered ? 'stroke-neutral-500' : 'stroke-neutral-300'
-        }`}
+        className="react-flow__edge-path fill-none stroke-2 stroke-neutral-300"
         d={edgePath}
         markerEnd={markerEnd}
       />
 
-      {/* Add node button at midpoint */}
+      {/* Always-visible add node button at midpoint */}
       <EdgeLabelRenderer>
         <div
           style={{
@@ -73,35 +69,17 @@ export const CustomEdge = memo(({
             pointerEvents: 'all',
           }}
           className="nodrag nopan"
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => setIsHovered(false)}
         >
           <button
             onClick={handleAddNode}
-            className={`
-              w-6 h-6 flex items-center justify-center
-              rounded-full bg-white border-2 border-neutral-300
+            className="w-6 h-6 flex items-center justify-center
+              rounded-full bg-white border-2 border-neutral-300 text-neutral-400
+              opacity-70 hover:opacity-100
               hover:border-neutral-900 hover:bg-neutral-900 hover:text-white
-              text-neutral-500 shadow-sm
-              transition-all duration-150
-              ${isHovered ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}
-            `}
+              shadow-sm transition-all"
             title="Add node"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
+            <PlusIcon />
           </button>
         </div>
       </EdgeLabelRenderer>

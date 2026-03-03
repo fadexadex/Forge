@@ -1,50 +1,58 @@
 import { useMcpStore } from '../../stores/mcpStore';
-import { Button } from '../ui/Button';
+import { useTestStore } from '../../stores/testStore';
 
 export function Header() {
-  const { getSelectedServer, getSelectedTool } = useMcpStore();
+  const { getSelectedServer, getSelectedTool, activeTab } = useMcpStore();
+  const { connectionStatus, serverInfo, getSelectedTool: getTestTool } = useTestStore();
   const server = getSelectedServer();
   const tool = getSelectedTool();
+  const isTestMode = activeTab === 'test';
+  const testTool = getTestTool();
 
   return (
     <header className="h-14 flex items-center justify-between px-4 border-b border-border bg-white">
       <div className="flex items-center gap-2 text-sm">
         <span className="font-semibold text-neutral-900">Forge</span>
 
-        {server && (
+        {isTestMode ? (
           <>
             <span className="text-neutral-300">/</span>
-            <span className="text-muted-foreground">{server.name}</span>
+            <span className="text-muted-foreground">Test Mode</span>
+            {connectionStatus === 'connected' && serverInfo && (
+              <>
+                <span className="text-neutral-300">/</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="relative flex h-2 w-2">
+                    <span className="connection-pulse absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                  </span>
+                  <span className="text-muted-foreground">{serverInfo.name}</span>
+                </div>
+              </>
+            )}
+            {testTool && (
+              <>
+                <span className="text-neutral-300">/</span>
+                <span className="text-muted-foreground">{testTool.name}</span>
+              </>
+            )}
           </>
-        )}
-
-        {tool && (
+        ) : (
           <>
-            <span className="text-neutral-300">/</span>
-            <span className="text-muted-foreground">{tool.name}</span>
-          </>
-        )}
-      </div>
+            {server && (
+              <>
+                <span className="text-neutral-300">/</span>
+                <span className="text-muted-foreground">{server.name}</span>
+              </>
+            )}
 
-      <div className="flex items-center gap-2">
-        {tool && (
-          <Button size="sm">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="mr-1.5"
-            >
-              <polygon points="5 3 19 12 5 21 5 3" />
-            </svg>
-            Run
-          </Button>
+            {tool && (
+              <>
+                <span className="text-neutral-300">/</span>
+                <span className="text-muted-foreground">{tool.name}</span>
+              </>
+            )}
+          </>
         )}
       </div>
     </header>

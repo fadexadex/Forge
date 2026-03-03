@@ -19,7 +19,7 @@ import { MergeNode } from '../nodes/MergeNode';
 import { ErrorHandlerNode } from '../nodes/ErrorHandlerNode';
 import { CustomEdge } from '../nodes/CustomEdge';
 import { CanvasToolbar } from './CanvasToolbar';
-import { FirstNodePrompt } from '../onboarding/FirstNodePrompt';
+import { TestWorkbench } from '../test/TestWorkbench';
 
 const nodeTypes = {
   [WORKFLOW_NODE_TYPES.INPUT]: InputNode,
@@ -46,6 +46,7 @@ export function Canvas() {
     setEdges,
     deleteNode,
     isNDVOpen,
+    activeTab,
   } = useMcpStore();
 
   const [selectedNodes, setSelectedNodes] = useState([]);
@@ -129,6 +130,11 @@ export function Canvas() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedNodes, deleteNode, tool, isNDVOpen]);
 
+  // Show Test Workbench when in test mode
+  if (activeTab === 'test') {
+    return <TestWorkbench />;
+  }
+
   // Show empty state when no tool is selected
   if (!selectedToolId) {
     return (
@@ -161,9 +167,6 @@ export function Canvas() {
     );
   }
 
-  // Check if tool only has initial nodes (Input + Output with no connections)
-  const isNewTool = tool && tool.nodes.length === 2 && tool.edges.length === 0;
-
   return (
     <div className="flex-1 relative">
       <CanvasToolbar />
@@ -177,7 +180,7 @@ export function Canvas() {
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
-        fitViewOptions={{ padding: 0.2 }}
+        fitViewOptions={{ padding: 0.3 }}
         className="bg-white"
         deleteKeyCode={null}
       >
@@ -189,8 +192,6 @@ export function Canvas() {
           className="!bg-muted"
         />
       </ReactFlow>
-
-      {isNewTool && <FirstNodePrompt />}
     </div>
   );
 }

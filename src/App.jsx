@@ -4,6 +4,7 @@ import { Canvas } from './components/layout/Canvas';
 import { CreateServerModal } from './components/modals/CreateServerModal';
 import { CreateToolModal } from './components/modals/CreateToolModal';
 import { AddNodePicker } from './components/modals/AddNodePicker';
+import { NodeDetailView } from './components/ndv/NodeDetailView';
 
 export default function App() {
   return (
@@ -19,6 +20,9 @@ export default function App() {
       <CreateServerModal />
       <CreateToolModal />
       <AddNodePicker />
+
+      {/* Node Detail View */}
+      <NodeDetailView />
     </div>
   );
 }

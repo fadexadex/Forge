@@ -2,16 +2,16 @@ import { memo } from 'react';
 import { Handle, Position } from 'reactflow';
 import { NodeWrapper } from './shared/NodeWrapper';
 
-import { ConditionIcon } from './shared/NodeIcons';
+import { LoopIcon } from './shared/NodeIcons';
 import { NODE_TYPE_META } from '../../utils/constants';
 import { useMcpStore } from '../../stores/mcpStore';
 
-export const ConditionNode = memo(({ id, data, selected }) => {
+export const LoopNode = memo(({ id, data, selected }) => {
   const { openNDV } = useMcpStore();
-  const meta = NODE_TYPE_META['condition'];
+  const meta = NODE_TYPE_META['loop'];
 
   return (
-    <NodeWrapper nodeId={id} nodeType="condition" selected={selected}>
+    <NodeWrapper nodeId={id} nodeType="loop" selected={selected}>
       {/* Node Shape */}
       <div className="relative">
         <Handle type="target" position={Position.Left}
@@ -20,24 +20,12 @@ export const ConditionNode = memo(({ id, data, selected }) => {
         <div className={`w-16 h-16 rounded-2xl bg-white border-2 flex items-center justify-center shadow-sm transition-all ${selected ? 'border-neutral-900 ring-4 ring-neutral-900/10' : 'border-neutral-200 hover:border-neutral-400'
           }`}>
           <div className={`w-10 h-10 rounded-[10px] ${meta.bgColor} flex items-center justify-center`}>
-            <ConditionIcon className="w-5 h-5 text-white" />
+            <LoopIcon className="w-5 h-5 text-white" />
           </div>
         </div>
 
-        <Handle
-          type="source"
-          position={Position.Right}
-          id="true"
-          style={{ top: '35%' }}
-          className="!w-3 !h-3 !bg-green-400 !border-2 !border-white !-right-1.5"
-        />
-        <Handle
-          type="source"
-          position={Position.Right}
-          id="false"
-          style={{ top: '65%' }}
-          className="!w-3 !h-3 !bg-red-400 !border-2 !border-white !-right-1.5"
-        />
+        <Handle type="source" position={Position.Right}
+          className="!w-3 !h-3 !bg-neutral-400 !border-2 !border-white !-right-1.5" />
       </div>
 
       {/* Label positioned below */}
@@ -48,4 +36,4 @@ export const ConditionNode = memo(({ id, data, selected }) => {
   );
 });
 
-ConditionNode.displayName = 'ConditionNode';
+LoopNode.displayName = 'LoopNode';
