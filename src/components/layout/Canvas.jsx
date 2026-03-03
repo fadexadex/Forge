@@ -20,6 +20,8 @@ import { ErrorHandlerNode } from '../nodes/ErrorHandlerNode';
 import { CustomEdge } from '../nodes/CustomEdge';
 import { CanvasToolbar } from './CanvasToolbar';
 import { TestWorkbench } from '../test/TestWorkbench';
+import { PromptBuilder } from '../prompts/PromptBuilder';
+import { ResourceEditor } from '../resources/ResourceEditor';
 
 const nodeTypes = {
   [WORKFLOW_NODE_TYPES.INPUT]: InputNode,
@@ -39,8 +41,9 @@ const edgeTypes = {
 
 export function Canvas() {
   const {
-    getSelectedTool,
-    selectedToolId,
+    getSelectedItem,
+    selectedItemId,
+    selectedItemType,
     updateNodePosition,
     addEdge: storeAddEdge,
     setEdges,
@@ -50,24 +53,24 @@ export function Canvas() {
   } = useMcpStore();
 
   const [selectedNodes, setSelectedNodes] = useState([]);
-  const tool = getSelectedTool();
+  const item = getSelectedItem();
 
   // Convert store nodes/edges to React Flow format
   const flowNodes = useMemo(() => {
-    if (!tool) return [];
-    return tool.nodes.map((node) => ({
+    if (!item || (selectedItemType !== 'tool' && selectedItemType !== 'resource')) return [];
+    return item.nodes.map((node) => ({
       id: node.id,
       type: node.type,
       position: node.position,
       data: node.data,
       selected: selectedNodes.includes(node.id),
     }));
-  }, [tool, selectedNodes]);
+  }, [item, selectedItemType, selectedNodes]);
 
   const flowEdges = useMemo(() => {
-    if (!tool) return [];
-    return tool.edges;
-  }, [tool]);
+    if (!item || (selectedItemType !== 'tool' && selectedItemType !== 'resource')) return [];
+    return item.edges;
+  }, [item, selectedItemType]);
 
   const onNodesChange = useCallback((changes) => {
     changes.forEach((change) => {
@@ -88,13 +91,13 @@ export function Canvas() {
   const onEdgesChange = useCallback((changes) => {
     // Handle edge deletions
     const deletions = changes.filter((c) => c.type === 'remove');
-    if (deletions.length > 0 && tool) {
-      const remainingEdges = tool.edges.filter(
+    if (deletions.length > 0 && item && (selectedItemType === 'tool' || selectedItemType === 'resource')) {
+      const remainingEdges = item.edges.filter(
         (e) => !deletions.some((d) => d.id === e.id)
       );
       setEdges(remainingEdges);
     }
-  }, [tool, setEdges]);
+  }, [item, selectedItemType, setEdges]);
 
   const onConnect = useCallback((params) => {
     storeAddEdge(params);
@@ -114,7 +117,7 @@ export function Canvas() {
         e.preventDefault();
         selectedNodes.forEach((nodeId) => {
           // Find the node to check if it's deletable
-          const node = tool?.nodes.find((n) => n.id === nodeId);
+          const node = item?.nodes?.find((n) => n.id === nodeId);
           if (node) {
             const meta = NODE_TYPE_META[node.type];
             if (meta?.deletable !== false) {
@@ -128,15 +131,15 @@ export function Canvas() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNodes, deleteNode, tool, isNDVOpen]);
+  }, [selectedNodes, deleteNode, item, isNDVOpen]);
 
   // Show Test Workbench when in test mode
   if (activeTab === 'test') {
     return <TestWorkbench />;
   }
 
-  // Show empty state when no tool is selected
-  if (!selectedToolId) {
+  // Show empty state when no item is selected
+  if (!selectedItemId) {
     return (
       <div className="flex-1 flex items-center justify-center bg-muted/30">
         <div className="text-center">
@@ -157,14 +160,22 @@ export function Canvas() {
             </svg>
           </div>
           <h3 className="text-lg font-medium text-neutral-900 mb-1">
-            No tool selected
+            No item selected
           </h3>
-          <p className="text-sm text-muted-foreground max-w-xs">
-            Create a server and tool from the sidebar to start building your workflow.
+          <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+            Create a server and add a tool, resource, or prompt from the sidebar to start building.
           </p>
         </div>
       </div>
     );
+  }
+
+  if (selectedItemType === 'prompt') {
+    return <PromptBuilder />;
+  }
+
+  if (selectedItemType === 'resource') {
+    return <ResourceEditor />;
   }
 
   return (

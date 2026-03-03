@@ -3,6 +3,8 @@ import { Sidebar } from './components/layout/Sidebar';
 import { Canvas } from './components/layout/Canvas';
 import { CreateServerModal } from './components/modals/CreateServerModal';
 import { CreateToolModal } from './components/modals/CreateToolModal';
+import { CreateResourceModal } from './components/modals/CreateResourceModal';
+import { CreatePromptModal } from './components/modals/CreatePromptModal';
 import { AddNodePicker } from './components/modals/AddNodePicker';
 import { NodeDetailView } from './components/ndv/NodeDetailView';
 
@@ -19,6 +21,8 @@ export default function App() {
       {/* Modals */}
       <CreateServerModal />
       <CreateToolModal />
+      <CreateResourceModal />
+      <CreatePromptModal />
       <AddNodePicker />
 
       {/* Node Detail View */}

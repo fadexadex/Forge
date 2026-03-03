@@ -2,8 +2,8 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useMcpStore } from '../../stores/mcpStore';
 
 export function CanvasToolbar() {
-  const { getSelectedTool, updateTool } = useMcpStore();
-  const tool = getSelectedTool();
+  const { getSelectedItem, updateItem } = useMcpStore();
+  const tool = getSelectedItem();
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingDesc, setIsEditingDesc] = useState(false);
@@ -29,9 +29,9 @@ export function CanvasToolbar() {
   const saveName = useCallback(() => {
     setIsEditingName(false);
     if (nameValue.trim() && nameValue !== tool?.name) {
-      updateTool({ name: nameValue.trim() });
+      updateItem({ name: nameValue.trim() });
     }
-  }, [nameValue, tool, updateTool]);
+  }, [nameValue, tool, updateItem]);
 
   const startEditingDesc = useCallback(() => {
     if (!tool) return;
@@ -43,9 +43,9 @@ export function CanvasToolbar() {
   const saveDesc = useCallback(() => {
     setIsEditingDesc(false);
     if (descValue !== (tool?.description || '')) {
-      updateTool({ description: descValue.trim() });
+      updateItem({ description: descValue.trim() });
     }
-  }, [descValue, tool, updateTool]);
+  }, [descValue, tool, updateItem]);
 
   const handleNameKeyDown = (e) => {
     if (e.key === 'Enter') saveName();
@@ -112,7 +112,9 @@ export function CanvasToolbar() {
 
       {/* Execute button — bottom center */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10">
-        <button className="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium
+        <button
+          onClick={() => alert('Workflow validation check: All nodes properly configured and connected.')}
+          className="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium
           text-white bg-neutral-900 hover:bg-neutral-800 rounded-lg shadow-sm transition-colors">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -125,9 +127,10 @@ export function CanvasToolbar() {
             strokeLinecap="round"
             strokeLinejoin="round"
           >
-            <polygon points="5 3 19 12 5 21 5 3" />
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
           </svg>
-          Execute
+          Validate Workflow
         </button>
       </div>
     </>

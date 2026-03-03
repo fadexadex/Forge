@@ -13,11 +13,11 @@ const TABS = [
 ];
 
 export function NodeDetailView() {
-  const { isNDVOpen, selectedNodeId, closeNDV, getSelectedTool } = useMcpStore();
+  const { isNDVOpen, selectedNodeId, closeNDV, getSelectedItem } = useMcpStore();
   const [activeTab, setActiveTab] = useState('parameters');
 
-  const tool = getSelectedTool();
-  const node = tool?.nodes.find((n) => n.id === selectedNodeId);
+  const tool = getSelectedItem();
+  const node = tool?.nodes?.find((n) => n.id === selectedNodeId);
 
   // Close on Escape
   const handleKeyDown = useCallback((e) => {

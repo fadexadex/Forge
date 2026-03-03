@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { WORKFLOW_NODE_TYPES, TRANSPORT_TYPES } from '../utils/constants';
 
 // Generate unique IDs
@@ -47,539 +48,688 @@ const createInitialNodes = () => {
   };
 };
 
-export const useMcpStore = create((set, get) => ({
-  // State
-  servers: [],
-  selectedServerId: null,
-  selectedToolId: null,
+export const useMcpStore = create(
+  persist(
+    (set, get) => ({
+      // State
+      servers: [],
+      selectedServerId: null,
+      selectedItemId: null,
+      selectedItemType: null, // 'tool' | 'resource' | 'prompt'
 
-  // Modal states
-  isCreateServerModalOpen: false,
-  isCreateToolModalOpen: false,
-  isAddNodePickerOpen: false,
-  createToolForServerId: null,
-
-  // Node picker context for edge/handle insertion
-  nodePickerContext: null, // { type: 'edge' | 'handle', sourceId?, targetId?, nodeId?, handleId?, position? }
-
-  // Node Detail View (NDV) state
-  selectedNodeId: null,
-  isNDVOpen: false,
-  nodeExecutionData: {}, // { [nodeId]: { input, output } }
-  nodeMockData: {}, // { [nodeId]: { input, output } }
-
-  // UI state
-  activeTab: 'create', // 'create' or 'test'
-
-  // Getters
-  getSelectedServer: () => {
-    const { servers, selectedServerId } = get();
-    return servers.find(s => s.id === selectedServerId) || null;
-  },
-
-  getSelectedTool: () => {
-    const { servers, selectedServerId, selectedToolId } = get();
-    const server = servers.find(s => s.id === selectedServerId);
-    if (!server) return null;
-    return server.tools.find(t => t.id === selectedToolId) || null;
-  },
-
-  // Tab actions
-  setActiveTab: (tab) => set({ activeTab: tab }),
-
-  // Modal actions
-  openCreateServerModal: () => set({ isCreateServerModalOpen: true }),
-  closeCreateServerModal: () => set({ isCreateServerModalOpen: false }),
-
-  openCreateToolModal: (serverId) => set({
-    isCreateToolModalOpen: true,
-    createToolForServerId: serverId
-  }),
-  closeCreateToolModal: () => set({
-    isCreateToolModalOpen: false,
-    createToolForServerId: null
-  }),
-
-  openAddNodePicker: (context = null) => set({ isAddNodePickerOpen: true, nodePickerContext: context }),
-  closeAddNodePicker: () => set({ isAddNodePickerOpen: false, nodePickerContext: null }),
-
-  // NDV actions
-  openNDV: (nodeId) => set({ selectedNodeId: nodeId, isNDVOpen: true }),
-  closeNDV: () => set({ isNDVOpen: false }),
-  setNodeMockData: (nodeId, type, data) => set((state) => ({
-    nodeMockData: {
-      ...state.nodeMockData,
-      [nodeId]: {
-        ...state.nodeMockData[nodeId],
-        [type]: data,
-      },
-    },
-  })),
-
-  // Server actions
-  addServer: (name, transport = TRANSPORT_TYPES.STDIO) => {
-    const newServer = {
-      id: generateId(),
-      name,
-      transport,
-      tools: [],
-    };
-
-    set((state) => ({
-      servers: [...state.servers, newServer],
+      // Modal states
       isCreateServerModalOpen: false,
-    }));
-
-    return newServer;
-  },
-
-  deleteServer: (serverId) => {
-    set((state) => ({
-      servers: state.servers.filter(s => s.id !== serverId),
-      selectedServerId: state.selectedServerId === serverId ? null : state.selectedServerId,
-      selectedToolId: state.selectedServerId === serverId ? null : state.selectedToolId,
-    }));
-  },
-
-  selectServer: (serverId) => {
-    set({ selectedServerId: serverId, selectedToolId: null });
-  },
-
-  // Tool actions
-  addTool: (serverId, name, description = '') => {
-    const { nodes, edges } = createInitialNodes();
-
-    const newTool = {
-      id: generateId(),
-      name,
-      description,
-      nodes,
-      edges,
-    };
-
-    set((state) => ({
-      servers: state.servers.map(server =>
-        server.id === serverId
-          ? { ...server, tools: [...server.tools, newTool] }
-          : server
-      ),
-      selectedServerId: serverId,
-      selectedToolId: newTool.id,
       isCreateToolModalOpen: false,
+      isCreateResourceModalOpen: false,
+      isCreatePromptModalOpen: false,
+      isAddNodePickerOpen: false,
       createToolForServerId: null,
-    }));
+      createResourceForServerId: null,
+      createPromptForServerId: null,
 
-    return newTool;
-  },
+      // Node picker context for edge/handle insertion
+      nodePickerContext: null, // { type: 'edge' | 'handle', sourceId?, targetId?, nodeId?, handleId?, position? }
 
-  deleteTool: (serverId, toolId) => {
-    set((state) => ({
-      servers: state.servers.map(server =>
-        server.id === serverId
-          ? { ...server, tools: server.tools.filter(t => t.id !== toolId) }
-          : server
-      ),
-      selectedToolId: state.selectedToolId === toolId ? null : state.selectedToolId,
-    }));
-  },
+      // Node Detail View (NDV) state
+      selectedNodeId: null,
+      isNDVOpen: false,
+      nodeExecutionData: {}, // { [nodeId]: { input, output } }
+      nodeMockData: {}, // { [nodeId]: { input, output } }
 
-  selectTool: (serverId, toolId) => {
-    set({ selectedServerId: serverId, selectedToolId: toolId });
-  },
+      // UI state
+      activeTab: 'create', // 'create' or 'test'
 
-  updateTool: (updates) => {
-    const { selectedServerId, selectedToolId, servers } = get();
-    if (!selectedServerId || !selectedToolId) return;
-    set({
-      servers: servers.map(server =>
-        server.id === selectedServerId
-          ? {
-              ...server,
-              tools: server.tools.map(tool =>
-                tool.id === selectedToolId
-                  ? { ...tool, ...updates }
-                  : tool
-              ),
-            }
-          : server
-      ),
-    });
-  },
+      // Getters
+      getSelectedServer: () => {
+        const { servers, selectedServerId } = get();
+        return servers.find(s => s.id === selectedServerId) || null;
+      },
 
-  // Node actions
-  addNode: (nodeType, position = { x: 250, y: 250 }) => {
-    const { selectedServerId, selectedToolId, servers, nodePickerContext } = get();
-    if (!selectedServerId || !selectedToolId) return null;
+      getSelectedTool: () => { // Keeps compatibility for purely tool-specific logic if needed, but consider getSelectedItem instead
+        const { servers, selectedServerId, selectedItemId, selectedItemType } = get();
+        if (selectedItemType !== 'tool') return null;
+        const server = servers.find(s => s.id === selectedServerId);
+        if (!server) return null;
+        return server.tools.find(t => t.id === selectedItemId) || null;
+      },
 
-    const server = servers.find(s => s.id === selectedServerId);
-    const tool = server?.tools.find(t => t.id === selectedToolId);
-    if (!tool) return null;
+      getSelectedItem: () => {
+        const { servers, selectedServerId, selectedItemId, selectedItemType } = get();
+        const server = servers.find(s => s.id === selectedServerId);
+        if (!server || !selectedItemId || !selectedItemType) return null;
 
-    const newNode = {
-      id: generateId(),
-      type: nodeType,
-      position: { ...position },
-      data: getDefaultNodeData(nodeType),
-    };
+        if (selectedItemType === 'tool') {
+          return server.tools.find(t => t.id === selectedItemId) || null;
+        } else if (selectedItemType === 'resource') {
+          return server.resources.find(r => r.id === selectedItemId) || null;
+        } else if (selectedItemType === 'prompt') {
+          return server.prompts.find(p => p.id === selectedItemId) || null;
+        }
+        return null;
+      },
 
-    let newEdges = [...tool.edges];
-    let updatedNodes = [...tool.nodes];
+      // Tab actions
+      setActiveTab: (tab) => set({ activeTab: tab }),
 
-    if (nodePickerContext?.type === 'edge' && nodePickerContext.sourceId && nodePickerContext.targetId) {
-      // Inserting on an edge — split the edge
-      const sourceNode = tool.nodes.find(n => n.id === nodePickerContext.sourceId);
-      const targetNode = tool.nodes.find(n => n.id === nodePickerContext.targetId);
+      // Modal actions
+      openCreateServerModal: () => set({ isCreateServerModalOpen: true }),
+      closeCreateServerModal: () => set({ isCreateServerModalOpen: false }),
 
-      if (sourceNode && targetNode) {
-        newNode.position = {
-          x: sourceNode.position.x + 300,
-          y: sourceNode.position.y,
+      openCreateToolModal: (serverId) => set({
+        isCreateToolModalOpen: true,
+        createToolForServerId: serverId
+      }),
+      closeCreateToolModal: () => set({
+        isCreateToolModalOpen: false,
+        createToolForServerId: null
+      }),
+
+      openCreateResourceModal: (serverId) => set({
+        isCreateResourceModalOpen: true,
+        createResourceForServerId: serverId
+      }),
+      closeCreateResourceModal: () => set({
+        isCreateResourceModalOpen: false,
+        createResourceForServerId: null
+      }),
+
+      openCreatePromptModal: (serverId) => set({
+        isCreatePromptModalOpen: true,
+        createPromptForServerId: serverId
+      }),
+      closeCreatePromptModal: () => set({
+        isCreatePromptModalOpen: false,
+        createPromptForServerId: null
+      }),
+
+      openAddNodePicker: (context = null) => set({ isAddNodePickerOpen: true, nodePickerContext: context }),
+      closeAddNodePicker: () => set({ isAddNodePickerOpen: false, nodePickerContext: null }),
+
+      // NDV actions
+      openNDV: (nodeId) => set({ selectedNodeId: nodeId, isNDVOpen: true }),
+      closeNDV: () => set({ isNDVOpen: false }),
+      setNodeMockData: (nodeId, type, data) => set((state) => ({
+        nodeMockData: {
+          ...state.nodeMockData,
+          [nodeId]: {
+            ...state.nodeMockData[nodeId],
+            [type]: data,
+          },
+        },
+      })),
+
+      // Server actions
+      addServer: (name, transport = TRANSPORT_TYPES.STDIO) => {
+        const newServer = {
+          id: generateId(),
+          name,
+          transport,
+          tools: [],
+          resources: [],
+          prompts: [],
         };
 
-        // Shift the target and all its downstream nodes right by 300
-        const downstreamIds = getDownstreamNodeIds(nodePickerContext.targetId, tool.edges);
-        updatedNodes = updatedNodes.map(n => {
-          if (downstreamIds.has(n.id)) {
-            return { ...n, position: { ...n.position, x: n.position.x + 300 } };
-          }
-          return n;
+        set((state) => ({
+          servers: [...state.servers, newServer],
+          isCreateServerModalOpen: false,
+        }));
+
+        return newServer;
+      },
+
+      deleteServer: (serverId) => {
+        set((state) => ({
+          servers: state.servers.filter(s => s.id !== serverId),
+          selectedServerId: state.selectedServerId === serverId ? null : state.selectedServerId,
+          selectedItemId: state.selectedServerId === serverId ? null : state.selectedItemId,
+          selectedItemType: state.selectedServerId === serverId ? null : state.selectedItemType,
+        }));
+      },
+
+      selectServer: (serverId) => {
+        set({ selectedServerId: serverId, selectedItemId: null, selectedItemType: null, isNDVOpen: false });
+      },
+
+      // Tool actions
+      addTool: (serverId, name, description = '') => {
+        const { nodes, edges } = createInitialNodes();
+
+        const newTool = {
+          id: generateId(),
+          name,
+          description,
+          nodes,
+          edges,
+        };
+
+        set((state) => ({
+          servers: state.servers.map(server =>
+            server.id === serverId
+              ? { ...server, tools: [...server.tools, newTool] }
+              : server
+          ),
+          selectedServerId: serverId,
+          selectedItemId: newTool.id,
+          selectedItemType: 'tool',
+          isCreateToolModalOpen: false,
+          createToolForServerId: null,
+        }));
+
+        return newTool;
+      },
+
+      deleteTool: (serverId, toolId) => {
+        set((state) => ({
+          servers: state.servers.map(server =>
+            server.id === serverId
+              ? { ...server, tools: server.tools.filter(t => t.id !== toolId) }
+              : server
+          ),
+          selectedItemId: state.selectedItemId === toolId && state.selectedItemType === 'tool' ? null : state.selectedItemId,
+          selectedItemType: state.selectedItemId === toolId && state.selectedItemType === 'tool' ? null : state.selectedItemType,
+        }));
+      },
+
+      addResource: (serverId, name, description, uriTemplate, mimeType, resourceType = 'template') => {
+        const { nodes, edges } = createInitialNodes();
+        const newResource = {
+          id: generateId(),
+          name,
+          description,
+          uriTemplate,
+          mimeType,
+          resourceType,
+          nodes,
+          edges,
+        };
+
+        set((state) => ({
+          servers: state.servers.map(server =>
+            server.id === serverId
+              ? { ...server, resources: [...server.resources, newResource] }
+              : server
+          ),
+          selectedServerId: serverId,
+          selectedItemId: newResource.id,
+          selectedItemType: 'resource',
+          isCreateResourceModalOpen: false,
+          createResourceForServerId: null,
+        }));
+
+        return newResource;
+      },
+
+      deleteResource: (serverId, resourceId) => {
+        set((state) => ({
+          servers: state.servers.map(server =>
+            server.id === serverId
+              ? { ...server, resources: server.resources.filter(r => r.id !== resourceId) }
+              : server
+          ),
+          selectedItemId: state.selectedItemId === resourceId && state.selectedItemType === 'resource' ? null : state.selectedItemId,
+          selectedItemType: state.selectedItemId === resourceId && state.selectedItemType === 'resource' ? null : state.selectedItemType,
+        }));
+      },
+
+      addPrompt: (serverId, name, description, args = []) => {
+        const newPrompt = {
+          id: generateId(),
+          name,
+          description,
+          arguments: args,
+        };
+
+        set((state) => ({
+          servers: state.servers.map(server =>
+            server.id === serverId
+              ? { ...server, prompts: [...server.prompts, newPrompt] }
+              : server
+          ),
+          selectedServerId: serverId,
+          selectedItemId: newPrompt.id,
+          selectedItemType: 'prompt',
+          isCreatePromptModalOpen: false,
+          createPromptForServerId: null,
+        }));
+
+        return newPrompt;
+      },
+
+      deletePrompt: (serverId, promptId) => {
+        set((state) => ({
+          servers: state.servers.map(server =>
+            server.id === serverId
+              ? { ...server, prompts: server.prompts.filter(p => p.id !== promptId) }
+              : server
+          ),
+          selectedItemId: state.selectedItemId === promptId && state.selectedItemType === 'prompt' ? null : state.selectedItemId,
+          selectedItemType: state.selectedItemId === promptId && state.selectedItemType === 'prompt' ? null : state.selectedItemType,
+        }));
+      },
+
+      selectItem: (serverId, itemId, itemType) => {
+        set({ selectedServerId: serverId, selectedItemId: itemId, selectedItemType: itemType, isNDVOpen: false });
+      },
+
+      selectTool: (serverId, toolId) => {
+        set({ selectedServerId: serverId, selectedItemId: toolId, selectedItemType: 'tool', isNDVOpen: false });
+      },
+
+      updateItem: (updates) => {
+        const { selectedServerId, selectedItemId, selectedItemType, servers } = get();
+        if (!selectedServerId || !selectedItemId || !selectedItemType) return;
+        set({
+          servers: servers.map(server =>
+            server.id === selectedServerId
+              ? {
+                ...server,
+                [selectedItemType + 's']: server[selectedItemType + 's'].map(item =>
+                  item.id === selectedItemId
+                    ? { ...item, ...updates }
+                    : item
+                ),
+              }
+              : server
+          ),
         });
-      }
+      },
 
-      // Remove old edge
-      const edgeId = `${nodePickerContext.sourceId}-${nodePickerContext.targetId}`;
-      newEdges = newEdges.filter(e => e.id !== edgeId);
+      updateTool: (updates) => {
+        get().updateItem(updates);
+      },
 
-      // Add source → new node
-      newEdges.push({
-        id: `${nodePickerContext.sourceId}-${newNode.id}`,
-        source: nodePickerContext.sourceId,
-        target: newNode.id,
-        sourceHandle: nodePickerContext.sourceHandle || null,
-      });
+      // Node actions
+      addNode: (nodeType, position = { x: 250, y: 250 }) => {
+        const { selectedServerId, selectedItemId, selectedItemType, servers, nodePickerContext } = get();
+        if (!selectedServerId || !selectedItemId || (selectedItemType !== 'tool' && selectedItemType !== 'resource')) return null;
 
-      // Add new node → target
-      newEdges.push({
-        id: `${newNode.id}-${nodePickerContext.targetId}`,
-        source: newNode.id,
-        target: nodePickerContext.targetId,
-        targetHandle: nodePickerContext.targetHandle || null,
-      });
+        const server = servers.find(s => s.id === selectedServerId);
+        const container = selectedItemType === 'tool' ? server?.tools : server?.resources;
+        const item = container?.find(t => t.id === selectedItemId);
+        if (!item) return null;
 
-    } else if (nodePickerContext?.type === 'handle' && nodePickerContext.nodeId) {
-      // Inserting after a specific node via + button
-      const sourceId = nodePickerContext.nodeId;
-      const sourceNode = tool.nodes.find(n => n.id === sourceId);
+        const newNode = {
+          id: generateId(),
+          type: nodeType,
+          position: { ...position },
+          data: getDefaultNodeData(nodeType),
+        };
 
-      if (sourceNode) {
-        // Find outgoing edges from this node
-        const outgoingEdges = newEdges.filter(e => e.source === sourceId);
+        let newEdges = [...item.edges];
+        let updatedNodes = [...item.nodes];
 
-        if (outgoingEdges.length > 0) {
-          // There's an existing connection — insert between
-          const targetEdge = outgoingEdges[0];
-          const targetId = targetEdge.target;
+        if (nodePickerContext?.type === 'edge' && nodePickerContext.sourceId && nodePickerContext.targetId) {
+          // Inserting on an edge — split the edge
+          const sourceNode = item.nodes.find(n => n.id === nodePickerContext.sourceId);
+          const targetNode = item.nodes.find(n => n.id === nodePickerContext.targetId);
 
-          newNode.position = {
-            x: sourceNode.position.x + 300,
-            y: sourceNode.position.y,
-          };
-
-          // Shift target and downstream nodes right by 300
-          const downstreamIds = getDownstreamNodeIds(targetId, tool.edges);
-          updatedNodes = updatedNodes.map(n => {
-            if (downstreamIds.has(n.id)) {
-              return { ...n, position: { ...n.position, x: n.position.x + 300 } };
-            }
-            return n;
-          });
-
-          // Remove old edge
-          newEdges = newEdges.filter(e => e.id !== targetEdge.id);
-
-          // Add source → new node
-          newEdges.push({
-            id: `${sourceId}-${newNode.id}`,
-            source: sourceId,
-            target: newNode.id,
-            sourceHandle: targetEdge.sourceHandle || null,
-          });
-
-          // Add new node → old target
-          newEdges.push({
-            id: `${newNode.id}-${targetId}`,
-            source: newNode.id,
-            target: targetId,
-            targetHandle: targetEdge.targetHandle || null,
-          });
-        } else {
-          // No outgoing edge — just append after
-          newNode.position = {
-            x: sourceNode.position.x + 300,
-            y: sourceNode.position.y,
-          };
-
-          // Add edge from source to new node
-          newEdges.push({
-            id: `${sourceId}-${newNode.id}`,
-            source: sourceId,
-            target: newNode.id,
-          });
-        }
-      }
-    } else {
-      // No context — find last node in chain before Output and insert before Output
-      const outputNode = tool.nodes.find(n => n.type === WORKFLOW_NODE_TYPES.OUTPUT);
-      if (outputNode) {
-        // Find the node that connects to Output
-        const edgeToOutput = newEdges.find(e => e.target === outputNode.id);
-        if (edgeToOutput) {
-          const sourceNode = tool.nodes.find(n => n.id === edgeToOutput.source);
-          if (sourceNode) {
+          if (sourceNode && targetNode) {
             newNode.position = {
               x: sourceNode.position.x + 300,
               y: sourceNode.position.y,
             };
 
-            // Shift Output right
+            // Shift the target and all its downstream nodes right by 300
+            const downstreamIds = getDownstreamNodeIds(nodePickerContext.targetId, item.edges);
             updatedNodes = updatedNodes.map(n => {
-              if (n.id === outputNode.id) {
+              if (downstreamIds.has(n.id)) {
                 return { ...n, position: { ...n.position, x: n.position.x + 300 } };
               }
               return n;
             });
+          }
 
-            // Remove edge to Output
-            newEdges = newEdges.filter(e => e.id !== edgeToOutput.id);
+          // Remove old edge
+          const edgeId = `${nodePickerContext.sourceId}-${nodePickerContext.targetId}`;
+          newEdges = newEdges.filter(e => e.id !== edgeId);
 
-            // Add source → new node
-            newEdges.push({
-              id: `${edgeToOutput.source}-${newNode.id}`,
-              source: edgeToOutput.source,
-              target: newNode.id,
-              sourceHandle: edgeToOutput.sourceHandle || null,
-            });
+          // Add source → new node
+          newEdges.push({
+            id: `${nodePickerContext.sourceId}-${newNode.id}`,
+            source: nodePickerContext.sourceId,
+            target: newNode.id,
+            sourceHandle: nodePickerContext.sourceHandle || null,
+          });
 
-            // Add new node → Output
-            newEdges.push({
-              id: `${newNode.id}-${outputNode.id}`,
-              source: newNode.id,
-              target: outputNode.id,
-            });
-          } else {
-            newNode.position = position;
+          // Add new node → target
+          newEdges.push({
+            id: `${newNode.id}-${nodePickerContext.targetId}`,
+            source: newNode.id,
+            target: nodePickerContext.targetId,
+            targetHandle: nodePickerContext.targetHandle || null,
+          });
+
+        } else if (nodePickerContext?.type === 'handle' && nodePickerContext.nodeId) {
+          // Inserting after a specific node via + button
+          const sourceId = nodePickerContext.nodeId;
+          const sourceNode = item.nodes.find(n => n.id === sourceId);
+
+          if (sourceNode) {
+            // Find outgoing edges from this node
+            const outgoingEdges = newEdges.filter(e => e.source === sourceId);
+
+            if (outgoingEdges.length > 0) {
+              // There's an existing connection — insert between
+              const targetEdge = outgoingEdges[0];
+              const targetId = targetEdge.target;
+
+              newNode.position = {
+                x: sourceNode.position.x + 300,
+                y: sourceNode.position.y,
+              };
+
+              // Shift target and downstream nodes right by 300
+              const downstreamIds = getDownstreamNodeIds(targetId, item.edges);
+              updatedNodes = updatedNodes.map(n => {
+                if (downstreamIds.has(n.id)) {
+                  return { ...n, position: { ...n.position, x: n.position.x + 300 } };
+                }
+                return n;
+              });
+
+              // Remove old edge
+              newEdges = newEdges.filter(e => e.id !== targetEdge.id);
+
+              // Add source → new node
+              newEdges.push({
+                id: `${sourceId}-${newNode.id}`,
+                source: sourceId,
+                target: newNode.id,
+                sourceHandle: targetEdge.sourceHandle || null,
+              });
+
+              // Add new node → old target
+              newEdges.push({
+                id: `${newNode.id}-${targetId}`,
+                source: newNode.id,
+                target: targetId,
+                targetHandle: targetEdge.targetHandle || null,
+              });
+            } else {
+              // No outgoing edge — just append after
+              newNode.position = {
+                x: sourceNode.position.x + 300,
+                y: sourceNode.position.y,
+              };
+
+              // Add edge from source to new node
+              newEdges.push({
+                id: `${sourceId}-${newNode.id}`,
+                source: sourceId,
+                target: newNode.id,
+              });
+            }
           }
         } else {
-          newNode.position = position;
-        }
-      }
-    }
+          // No context — find last node in chain before Output and insert before Output
+          const outputNode = item.nodes.find(n => n.type === WORKFLOW_NODE_TYPES.OUTPUT);
+          if (outputNode) {
+            // Find the node that connects to Output
+            const edgeToOutput = newEdges.find(e => e.target === outputNode.id);
+            if (edgeToOutput) {
+              const sourceNode = item.nodes.find(n => n.id === edgeToOutput.source);
+              if (sourceNode) {
+                newNode.position = {
+                  x: sourceNode.position.x + 300,
+                  y: sourceNode.position.y,
+                };
 
-    set({
-      servers: servers.map(s =>
-        s.id === selectedServerId
-          ? {
-              ...s,
-              tools: s.tools.map(t =>
-                t.id === selectedToolId
-                  ? {
+                // Shift Output right
+                updatedNodes = updatedNodes.map(n => {
+                  if (n.id === outputNode.id) {
+                    return { ...n, position: { ...n.position, x: n.position.x + 300 } };
+                  }
+                  return n;
+                });
+
+                // Remove edge to Output
+                newEdges = newEdges.filter(e => e.id !== edgeToOutput.id);
+
+                // Add source → new node
+                newEdges.push({
+                  id: `${edgeToOutput.source}-${newNode.id}`,
+                  source: edgeToOutput.source,
+                  target: newNode.id,
+                  sourceHandle: edgeToOutput.sourceHandle || null,
+                });
+
+                // Add new node → Output
+                newEdges.push({
+                  id: `${newNode.id}-${outputNode.id}`,
+                  source: newNode.id,
+                  target: outputNode.id,
+                });
+              } else {
+                newNode.position = position;
+              }
+            } else {
+              newNode.position = position;
+            }
+          }
+        }
+
+        // Now update the specific tool or resource
+        const targetCollection = selectedItemType + 's'; // 'tools' or 'resources'
+
+        set({
+          servers: servers.map(s =>
+            s.id === selectedServerId
+              ? {
+                ...s,
+                [targetCollection]: s[targetCollection].map(t =>
+                  t.id === selectedItemId
+                    ? {
                       ...t,
                       nodes: [...updatedNodes, newNode],
                       edges: newEdges,
                     }
-                  : t
-              ),
-            }
-          : s
-      ),
-      isAddNodePickerOpen: false,
-      nodePickerContext: null,
-    });
+                    : t
+                ),
+              }
+              : s
+          ),
+          isAddNodePickerOpen: false,
+          nodePickerContext: null,
+        });
 
-    return newNode;
-  },
+        return newNode;
+      },
 
-  updateNode: (nodeId, updates) => {
-    const { selectedServerId, selectedToolId, servers } = get();
-    if (!selectedServerId || !selectedToolId) return;
+      updateNode: (nodeId, updates) => {
+        const { selectedServerId, selectedItemId, selectedItemType, servers } = get();
+        if (!selectedServerId || !selectedItemId || (selectedItemType !== 'tool' && selectedItemType !== 'resource')) return;
+        const targetCollection = selectedItemType + 's';
 
-    set({
-      servers: servers.map(server =>
-        server.id === selectedServerId
-          ? {
-              ...server,
-              tools: server.tools.map(tool =>
-                tool.id === selectedToolId
-                  ? {
-                      ...tool,
-                      nodes: tool.nodes.map(node =>
+        set({
+          servers: servers.map(server =>
+            server.id === selectedServerId
+              ? {
+                ...server,
+                [targetCollection]: server[targetCollection].map(item =>
+                  item.id === selectedItemId
+                    ? {
+                      ...item,
+                      nodes: item.nodes.map(node =>
                         node.id === nodeId
                           ? { ...node, ...updates }
                           : node
                       ),
                     }
-                  : tool
-              ),
-            }
-          : server
-      ),
-    });
-  },
+                    : item
+                ),
+              }
+              : server
+          ),
+        });
+      },
 
-  updateNodeData: (nodeId, dataUpdates) => {
-    const { selectedServerId, selectedToolId, servers } = get();
-    if (!selectedServerId || !selectedToolId) return;
+      updateNodeData: (nodeId, dataUpdates) => {
+        const { selectedServerId, selectedItemId, selectedItemType, servers } = get();
+        if (!selectedServerId || !selectedItemId || (selectedItemType !== 'tool' && selectedItemType !== 'resource')) return;
+        const targetCollection = selectedItemType + 's';
 
-    set({
-      servers: servers.map(server =>
-        server.id === selectedServerId
-          ? {
-              ...server,
-              tools: server.tools.map(tool =>
-                tool.id === selectedToolId
-                  ? {
-                      ...tool,
-                      nodes: tool.nodes.map(node =>
+        set({
+          servers: servers.map(server =>
+            server.id === selectedServerId
+              ? {
+                ...server,
+                [targetCollection]: server[targetCollection].map(item =>
+                  item.id === selectedItemId
+                    ? {
+                      ...item,
+                      nodes: item.nodes.map(node =>
                         node.id === nodeId
                           ? { ...node, data: { ...node.data, ...dataUpdates } }
                           : node
                       ),
                     }
-                  : tool
-              ),
-            }
-          : server
-      ),
-    });
-  },
+                    : item
+                ),
+              }
+              : server
+          ),
+        });
+      },
 
-  deleteNode: (nodeId) => {
-    const { selectedServerId, selectedToolId, servers } = get();
-    if (!selectedServerId || !selectedToolId) return;
+      deleteNode: (nodeId) => {
+        const { selectedServerId, selectedItemId, selectedItemType, servers } = get();
+        if (!selectedServerId || !selectedItemId || (selectedItemType !== 'tool' && selectedItemType !== 'resource')) return;
+        const targetCollection = selectedItemType + 's';
 
-    set({
-      servers: servers.map(server =>
-        server.id === selectedServerId
-          ? {
-              ...server,
-              tools: server.tools.map(tool =>
-                tool.id === selectedToolId
-                  ? {
-                      ...tool,
-                      nodes: tool.nodes.filter(n => n.id !== nodeId),
-                      edges: tool.edges.filter(e => e.source !== nodeId && e.target !== nodeId),
+        set({
+          servers: servers.map(server =>
+            server.id === selectedServerId
+              ? {
+                ...server,
+                [targetCollection]: server[targetCollection].map(item =>
+                  item.id === selectedItemId
+                    ? {
+                      ...item,
+                      nodes: item.nodes.filter(n => n.id !== nodeId),
+                      edges: item.edges.filter(e => e.source !== nodeId && e.target !== nodeId),
                     }
-                  : tool
-              ),
-            }
-          : server
-      ),
-    });
-  },
+                    : item
+                ),
+              }
+              : server
+          ),
+        });
+      },
 
-  // Update node positions (for React Flow drag)
-  updateNodePosition: (nodeId, position) => {
-    const { selectedServerId, selectedToolId, servers } = get();
-    if (!selectedServerId || !selectedToolId) return;
+      // Update node positions (for React Flow drag)
+      updateNodePosition: (nodeId, position) => {
+        const { selectedServerId, selectedItemId, selectedItemType, servers } = get();
+        if (!selectedServerId || !selectedItemId || (selectedItemType !== 'tool' && selectedItemType !== 'resource')) return;
+        const targetCollection = selectedItemType + 's';
 
-    set({
-      servers: servers.map(server =>
-        server.id === selectedServerId
-          ? {
-              ...server,
-              tools: server.tools.map(tool =>
-                tool.id === selectedToolId
-                  ? {
-                      ...tool,
-                      nodes: tool.nodes.map(node =>
+        set({
+          servers: servers.map(server =>
+            server.id === selectedServerId
+              ? {
+                ...server,
+                [targetCollection]: server[targetCollection].map(item =>
+                  item.id === selectedItemId
+                    ? {
+                      ...item,
+                      nodes: item.nodes.map(node =>
                         node.id === nodeId
                           ? { ...node, position }
                           : node
                       ),
                     }
-                  : tool
-              ),
-            }
-          : server
-      ),
-    });
-  },
+                    : item
+                ),
+              }
+              : server
+          ),
+        });
+      },
 
-  // Edge actions
-  addEdge: (edge) => {
-    const { selectedServerId, selectedToolId, servers } = get();
-    if (!selectedServerId || !selectedToolId) return;
+      // Edge actions
+      addEdge: (edge) => {
+        const { selectedServerId, selectedItemId, selectedItemType, servers } = get();
+        if (!selectedServerId || !selectedItemId || (selectedItemType !== 'tool' && selectedItemType !== 'resource')) return;
+        const targetCollection = selectedItemType + 's';
 
-    const server = servers.find(s => s.id === selectedServerId);
-    const tool = server?.tools.find(t => t.id === selectedToolId);
-    if (!tool) return;
+        const server = servers.find(s => s.id === selectedServerId);
+        const container = selectedItemType === 'tool' ? server?.tools : server?.resources;
+        const item = container?.find(t => t.id === selectedItemId);
+        if (!item) return;
 
-    const newEdgeId = `${edge.source}-${edge.target}`;
-    // Skip if this edge already exists
-    if (tool.edges.some(e => e.id === newEdgeId)) return;
+        const newEdgeId = `${edge.source}-${edge.target}`;
+        // Skip if this edge already exists
+        if (item.edges.some(e => e.id === newEdgeId)) return;
 
-    const newEdge = {
-      id: newEdgeId,
-      ...edge,
-    };
+        const newEdge = {
+          id: newEdgeId,
+          ...edge,
+        };
 
-    set({
-      servers: servers.map(s =>
-        s.id === selectedServerId
-          ? {
-              ...s,
-              tools: s.tools.map(t =>
-                t.id === selectedToolId
-                  ? { ...t, edges: [...t.edges, newEdge] }
-                  : t
-              ),
-            }
-          : s
-      ),
-    });
-  },
+        set({
+          servers: servers.map(s =>
+            s.id === selectedServerId
+              ? {
+                ...s,
+                [targetCollection]: s[targetCollection].map(t =>
+                  t.id === selectedItemId
+                    ? { ...t, edges: [...t.edges, newEdge] }
+                    : t
+                ),
+              }
+              : s
+          ),
+        });
+      },
 
-  deleteEdge: (edgeId) => {
-    const { selectedServerId, selectedToolId, servers } = get();
-    if (!selectedServerId || !selectedToolId) return;
+      deleteEdge: (edgeId) => {
+        const { selectedServerId, selectedItemId, selectedItemType, servers } = get();
+        if (!selectedServerId || !selectedItemId || (selectedItemType !== 'tool' && selectedItemType !== 'resource')) return;
+        const targetCollection = selectedItemType + 's';
 
-    set({
-      servers: servers.map(server =>
-        server.id === selectedServerId
-          ? {
-              ...server,
-              tools: server.tools.map(tool =>
-                tool.id === selectedToolId
-                  ? { ...tool, edges: tool.edges.filter(e => e.id !== edgeId) }
-                  : tool
-              ),
-            }
-          : server
-      ),
-    });
-  },
+        set({
+          servers: servers.map(server =>
+            server.id === selectedServerId
+              ? {
+                ...server,
+                [targetCollection]: server[targetCollection].map(item =>
+                  item.id === selectedItemId
+                    ? { ...item, edges: item.edges.filter(e => e.id !== edgeId) }
+                    : item
+                ),
+              }
+              : server
+          ),
+        });
+      },
 
-  // Update edges (for React Flow)
-  setEdges: (edges) => {
-    const { selectedServerId, selectedToolId, servers } = get();
-    if (!selectedServerId || !selectedToolId) return;
+      // Update edges (for React Flow)
+      setEdges: (edges) => {
+        const { selectedServerId, selectedItemId, selectedItemType, servers } = get();
+        if (!selectedServerId || !selectedItemId || (selectedItemType !== 'tool' && selectedItemType !== 'resource')) return;
+        const targetCollection = selectedItemType + 's';
 
-    set({
-      servers: servers.map(server =>
-        server.id === selectedServerId
-          ? {
-              ...server,
-              tools: server.tools.map(tool =>
-                tool.id === selectedToolId
-                  ? { ...tool, edges }
-                  : tool
-              ),
-            }
-          : server
-      ),
-    });
-  },
-}));
+        set({
+          servers: servers.map(server =>
+            server.id === selectedServerId
+              ? {
+                ...server,
+                [targetCollection]: server[targetCollection].map(item =>
+                  item.id === selectedItemId
+                    ? { ...item, edges }
+                    : item
+                ),
+              }
+              : server
+          ),
+        });
+      },
+    }),
+    {
+      name: 'mcp-builder-storage',
+      partialize: (state) => ({ servers: state.servers }),
+    }
+  )
+);
 
 // Helper: Get default data for a node type
 function getDefaultNodeData(nodeType) {
