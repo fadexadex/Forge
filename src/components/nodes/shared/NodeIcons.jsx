@@ -1,7 +1,7 @@
 export function InputIcon({ className }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M13 2L3 14h9l-1 10 10-12h-9l1-10z" />
+      <path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
     </svg>
   );
 }
@@ -9,8 +9,8 @@ export function InputIcon({ className }) {
 export function OutputIcon({ className }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-      <line x1="4" y1="22" x2="4" y2="15" />
+      <line x1="22" y1="2" x2="11" y2="13" />
+      <polygon points="22 2 15 22 11 13 2 9 22 2" />
     </svg>
   );
 }
