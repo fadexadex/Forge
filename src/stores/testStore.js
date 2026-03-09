@@ -106,10 +106,25 @@ export const useTestStore = create((set, get) => ({
   serverInfo: null,
   selectedBuilderServerId: null, // Server ID selected for builder preview
 
+  // Primitive type selection (sub-tabs)
+  selectedPrimitiveType: 'tools', // 'tools' | 'resources' | 'prompts'
+
   // Tools
   tools: [],
   selectedToolName: null,
   searchQuery: '',
+
+  // Resources
+  resources: [],
+  selectedResourceUri: null,
+  resourceInputValues: {}, // For template variables
+  lastResourceResponse: null,
+
+  // Prompts
+  prompts: [],
+  selectedPromptName: null,
+  promptInputValues: {}, // For prompt arguments
+  lastPromptResponse: null,
 
   // Execution
   inputValues: {},
@@ -137,8 +152,37 @@ export const useTestStore = create((set, get) => ({
     );
   },
 
+  getFilteredResources: () => {
+    const { resources, searchQuery } = get();
+    if (!searchQuery.trim()) return resources;
+    const q = searchQuery.toLowerCase();
+    return resources.filter(
+      (r) => r.name.toLowerCase().includes(q) || (r.description || '').toLowerCase().includes(q)
+    );
+  },
+
+  getFilteredPrompts: () => {
+    const { prompts, searchQuery } = get();
+    if (!searchQuery.trim()) return prompts;
+    const q = searchQuery.toLowerCase();
+    return prompts.filter(
+      (p) => p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q)
+    );
+  },
+
+  getSelectedResource: () => {
+    const { resources, selectedResourceUri } = get();
+    return resources.find((r) => r.uri === selectedResourceUri) || null;
+  },
+
+  getSelectedPrompt: () => {
+    const { prompts, selectedPromptName } = get();
+    return prompts.find((p) => p.name === selectedPromptName) || null;
+  },
+
   // Actions
   setTestMode: (mode) => set({ testMode: mode }),
+  setSelectedPrimitiveType: (type) => set({ selectedPrimitiveType: type }),
 
   setServerUrl: (url) => set({ serverUrl: url }),
   setTransportType: (type) => set({ transportType: type }),
@@ -154,7 +198,7 @@ export const useTestStore = create((set, get) => ({
       : mcpState.getSelectedServer();
 
     if (!builderServer) {
-      set({ connectionStatus: 'disconnected', connectionError: 'No builder server found. Select a server first.', testMode: 'builder', serverInfo: null, tools: [] });
+      set({ connectionStatus: 'disconnected', connectionError: 'No builder server found. Select a server first.', testMode: 'builder', serverInfo: null, tools: [], resources: [], prompts: [] });
       return;
     }
 
@@ -182,6 +226,46 @@ export const useTestStore = create((set, get) => ({
       };
     });
 
+    // Map builder resources
+    const builderResources = (builderServer.resources || []).map(r => {
+      // Extract variables from URI template {param}
+      const variables = [];
+      const regex = /\{([^}]+)\}/g;
+      let match;
+      while ((match = regex.exec(r.uriTemplate || '')) !== null) {
+        variables.push({
+          name: match[1],
+          type: 'string',
+          description: (r.variables || []).find(v => v.name === match[1])?.description || '',
+        });
+      }
+
+      return {
+        name: r.name || 'Unnamed resource',
+        uri: r.uriTemplate || '',
+        description: r.description || '',
+        mimeType: r.mimeType || 'application/json',
+        resourceType: r.resourceType || 'template',
+        variables,
+        content: r.content || '',
+        original: r,
+      };
+    });
+
+    // Map builder prompts
+    const builderPrompts = (builderServer.prompts || []).map(p => ({
+      name: p.name || 'Unnamed prompt',
+      description: p.description || '',
+      arguments: (p.arguments || []).map(arg => ({
+        name: arg.name,
+        type: arg.type || 'string',
+        description: arg.description || '',
+        required: arg.required || false,
+      })),
+      messages: p.messages || [],
+      original: p,
+    }));
+
     set({
       testMode: 'builder',
       connectionStatus: 'connected',
@@ -191,8 +275,12 @@ export const useTestStore = create((set, get) => ({
         protocolVersion: '2024-11-05',
       },
       tools: builderTools,
+      resources: builderResources,
+      prompts: builderPrompts,
       connectionError: null,
       selectedToolName: null,
+      selectedResourceUri: null,
+      selectedPromptName: null,
       searchQuery: '',
     });
   },
@@ -230,13 +318,21 @@ export const useTestStore = create((set, get) => ({
       connectionError: null,
       serverInfo: null,
       tools: [],
+      resources: [],
+      prompts: [],
       selectedToolName: null,
+      selectedResourceUri: null,
+      selectedPromptName: null,
       searchQuery: '',
       inputValues: {},
       inputMode: 'form',
       rawJsonInput: '',
+      resourceInputValues: {},
+      promptInputValues: {},
       isExecuting: false,
       lastResponse: null,
+      lastResourceResponse: null,
+      lastPromptResponse: null,
       history: [],
     });
   },
@@ -257,6 +353,151 @@ export const useTestStore = create((set, get) => ({
       lastResponse: null,
       history: [],
     });
+  },
+
+  // Resource selection and execution
+  selectResource: (uri) => {
+    const resource = get().resources.find((r) => r.uri === uri);
+    const skeleton = {};
+    if (resource?.variables) {
+      resource.variables.forEach((v) => {
+        skeleton[v.name] = '';
+      });
+    }
+    set({
+      selectedResourceUri: uri,
+      resourceInputValues: skeleton,
+      lastResourceResponse: null,
+    });
+  },
+
+  setResourceInputValue: (field, value) =>
+    set((state) => ({
+      resourceInputValues: { ...state.resourceInputValues, [field]: value },
+    })),
+
+  executeResource: async () => {
+    const { selectedResourceUri, resourceInputValues } = get();
+    const resource = get().getSelectedResource();
+    if (!resource) return;
+
+    set({ isExecuting: true });
+    const startTime = performance.now();
+
+    try {
+      // Interpolate URI template with variables
+      let resolvedUri = resource.uri;
+      Object.entries(resourceInputValues).forEach(([key, value]) => {
+        resolvedUri = resolvedUri.replace(new RegExp(`\\{${key}\\}`, 'g'), value || `{${key}}`);
+      });
+
+      // Interpolate content with {{variable}} syntax
+      let resolvedContent = resource.content || '';
+      Object.entries(resourceInputValues).forEach(([key, value]) => {
+        resolvedContent = resolvedContent.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value || `{{${key}}}`);
+      });
+
+      const responseTime = Math.round(performance.now() - startTime);
+
+      // Return MCP-style response
+      const response = {
+        success: true,
+        data: {
+          contents: [{
+            uri: resolvedUri,
+            mimeType: resource.mimeType || 'application/json',
+            text: resolvedContent,
+          }]
+        },
+        responseTime,
+      };
+
+      set({
+        isExecuting: false,
+        lastResourceResponse: response,
+      });
+    } catch (err) {
+      set({
+        isExecuting: false,
+        lastResourceResponse: {
+          success: false,
+          error: err.message || 'Resource execution failed',
+          responseTime: Math.round(performance.now() - startTime),
+        },
+      });
+    }
+  },
+
+  // Prompt selection and execution
+  selectPrompt: (name) => {
+    const prompt = get().prompts.find((p) => p.name === name);
+    const skeleton = {};
+    if (prompt?.arguments) {
+      prompt.arguments.forEach((arg) => {
+        skeleton[arg.name] = '';
+      });
+    }
+    set({
+      selectedPromptName: name,
+      promptInputValues: skeleton,
+      lastPromptResponse: null,
+    });
+  },
+
+  setPromptInputValue: (field, value) =>
+    set((state) => ({
+      promptInputValues: { ...state.promptInputValues, [field]: value },
+    })),
+
+  executePrompt: async () => {
+    const { selectedPromptName, promptInputValues } = get();
+    const prompt = get().getSelectedPrompt();
+    if (!prompt) return;
+
+    set({ isExecuting: true });
+    const startTime = performance.now();
+
+    try {
+      // Interpolate messages with {{argument}} syntax
+      const resolvedMessages = (prompt.messages || []).map((msg) => {
+        let content = msg.content || '';
+        Object.entries(promptInputValues).forEach(([key, value]) => {
+          content = content.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value || `{{${key}}}`);
+        });
+        return {
+          role: msg.role,
+          content: {
+            type: 'text',
+            text: content,
+          },
+        };
+      });
+
+      const responseTime = Math.round(performance.now() - startTime);
+
+      // Return MCP-style response
+      const response = {
+        success: true,
+        data: {
+          messages: resolvedMessages,
+        },
+        responseTime,
+      };
+
+      set({
+        isExecuting: false,
+        lastPromptResponse: response,
+      });
+    } catch (err) {
+      set({
+        isExecuting: false,
+        lastPromptResponse: {
+          success: false,
+          error: err.message || 'Prompt execution failed',
+          responseTime: Math.round(performance.now() - startTime),
+        },
+      });
+    }
   },
 
   setInputValue: (field, value) =>

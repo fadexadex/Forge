@@ -63,6 +63,10 @@ export const useMcpStore = create(
       isCreateResourceModalOpen: false,
       isCreatePromptModalOpen: false,
       isAddNodePickerOpen: false,
+      isExportServerModalOpen: false,
+      isImportServerModalOpen: false,
+      importError: null,
+      exportServerId: null,
       createToolForServerId: null,
       createResourceForServerId: null,
       createPromptForServerId: null,
@@ -174,6 +178,107 @@ export const useMcpStore = create(
 
       openAddNodePicker: (context = null) => set({ isAddNodePickerOpen: true, nodePickerContext: context }),
       closeAddNodePicker: () => set({ isAddNodePickerOpen: false, nodePickerContext: null }),
+
+      openExportServerModal: (serverId) => set({
+        isExportServerModalOpen: true,
+        exportServerId: serverId
+      }),
+      closeExportServerModal: () => set({
+        isExportServerModalOpen: false,
+        exportServerId: null
+      }),
+
+      getExportServer: () => {
+        const { servers, exportServerId } = get();
+        return servers.find(s => s.id === exportServerId) || null;
+      },
+
+      openImportServerModal: () => set({ isImportServerModalOpen: true, importError: null }),
+      closeImportServerModal: () => set({ isImportServerModalOpen: false, importError: null }),
+      setImportError: (error) => set({ importError: error }),
+
+      importServerFromManifest: (manifest) => {
+        const { servers } = get();
+
+        // Validate manifest structure
+        if (!manifest || !manifest.server) {
+          set({ importError: 'Invalid manifest: missing server data' });
+          return false;
+        }
+
+        const serverData = manifest.server;
+
+        // Generate new IDs to avoid conflicts
+        const newServerId = generateId();
+
+        // Handle duplicate names by appending (1), (2), etc.
+        let baseName = serverData.name || 'Imported Server';
+        let finalName = baseName;
+        let counter = 1;
+        while (servers.some(s => s.name === finalName)) {
+          finalName = `${baseName} (${counter})`;
+          counter++;
+        }
+
+        // Deep clone and regenerate IDs for tools
+        const newTools = (serverData.tools || []).map(tool => {
+          const newToolId = generateId();
+          const idMap = {};
+
+          // Map old node IDs to new ones
+          const newNodes = (tool.nodes || []).map(node => {
+            const newNodeId = generateId();
+            idMap[node.id] = newNodeId;
+            return { ...node, id: newNodeId };
+          });
+
+          // Update edge source/target to use new node IDs
+          const newEdges = (tool.edges || []).map(edge => ({
+            ...edge,
+            id: `${idMap[edge.source] || edge.source}-${idMap[edge.target] || edge.target}`,
+            source: idMap[edge.source] || edge.source,
+            target: idMap[edge.target] || edge.target,
+          }));
+
+          return {
+            ...tool,
+            id: newToolId,
+            nodes: newNodes,
+            edges: newEdges,
+          };
+        });
+
+        // Deep clone and regenerate IDs for resources
+        const newResources = (serverData.resources || []).map(resource => ({
+          ...resource,
+          id: generateId(),
+        }));
+
+        // Deep clone and regenerate IDs for prompts
+        const newPrompts = (serverData.prompts || []).map(prompt => ({
+          ...prompt,
+          id: generateId(),
+        }));
+
+        const newServer = {
+          id: newServerId,
+          name: finalName,
+          description: serverData.description || '',
+          transport: serverData.transport || 'stdio',
+          tools: newTools,
+          resources: newResources,
+          prompts: newPrompts,
+        };
+
+        set((state) => ({
+          servers: [...state.servers, newServer],
+          expandedServers: [...state.expandedServers, newServerId],
+          isImportServerModalOpen: false,
+          importError: null,
+        }));
+
+        return true;
+      },
 
       // NDV actions
       openNDV: (nodeId) => set({ selectedNodeId: nodeId, isNDVOpen: true }),

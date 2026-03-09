@@ -9,9 +9,11 @@ export function CreateTab() {
     expandedServers,
     toggleServerExpanded,
     openCreateServerModal,
+    openImportServerModal,
     openCreateToolModal,
     openCreateResourceModal,
     openCreatePromptModal,
+    openExportServerModal,
     selectItem,
     deleteServer,
     deleteTool,
@@ -29,26 +31,49 @@ export function CreateTab() {
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
             Servers
           </span>
-          <button
-            onClick={openCreateServerModal}
-            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-neutral-900 transition-colors"
-            title="Create server"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          <div className="flex items-center gap-1">
+            <button
+              onClick={openImportServerModal}
+              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-neutral-900 transition-colors"
+              title="Import server"
             >
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-          </button>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+            </button>
+            <button
+              onClick={openCreateServerModal}
+              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-neutral-900 transition-colors"
+              title="Create server"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {servers.length === 0 ? (
@@ -70,6 +95,7 @@ export function CreateTab() {
                 onAddResource={() => openCreateResourceModal(server.id)}
                 onAddPrompt={() => openCreatePromptModal(server.id)}
                 onDeleteServer={() => deleteServer(server.id)}
+                onExportServer={() => openExportServerModal(server.id)}
                 onDeleteTool={(toolId) => deleteTool(server.id, toolId)}
                 onDeleteResource={(resourceId) => deleteResource(server.id, resourceId)}
                 onDeletePrompt={(promptId) => deletePrompt(server.id, promptId)}
@@ -113,6 +139,7 @@ function ServerItem({
   onAddResource,
   onAddPrompt,
   onDeleteServer,
+  onExportServer,
   onDeleteTool,
   onDeleteResource,
   onDeletePrompt,
@@ -232,6 +259,21 @@ function ServerItem({
                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                   </svg>
                   Rename
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onExportServer();
+                    setShowMenu(false);
+                  }}
+                  className="w-full px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-100 flex items-center gap-2"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Export
                 </button>
                 <button
                   onClick={(e) => {
