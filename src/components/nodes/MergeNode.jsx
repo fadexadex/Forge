@@ -1,18 +1,19 @@
 import { memo } from 'react';
 import { Handle, Position } from 'reactflow';
 import { NodeWrapper } from './shared/NodeWrapper';
-
 import { MergeIcon } from './shared/NodeIcons';
 import { NODE_TYPE_META } from '../../utils/constants';
 import { useMcpStore } from '../../stores/mcpStore';
+import { getNodeBorderClass } from './shared/nodeStyles';
 
 export const MergeNode = memo(({ id, data, selected }) => {
   const { openNDV } = useMcpStore();
   const meta = NODE_TYPE_META['merge'];
   const inputCount = data.inputCount || 2;
+  const executionStatus = data.executionStatus;
 
   return (
-    <NodeWrapper nodeId={id} nodeType="merge" selected={selected}>
+    <NodeWrapper nodeId={id} nodeType="merge" selected={selected} executionStatus={executionStatus}>
       {/* Node Shape */}
       <div className="relative">
         {Array.from({ length: inputCount }).map((_, i) => (
@@ -26,8 +27,7 @@ export const MergeNode = memo(({ id, data, selected }) => {
           />
         ))}
 
-        <div className={`w-16 h-16 rounded-2xl bg-white border-2 flex items-center justify-center shadow-sm transition-all ${selected ? 'border-neutral-900 ring-4 ring-neutral-900/10' : 'border-neutral-200 hover:border-neutral-400'
-          }`}>
+        <div className={`w-16 h-16 rounded-2xl bg-white border-2 flex items-center justify-center shadow-sm transition-all ${getNodeBorderClass(selected, executionStatus)}`}>
           <div className={`w-10 h-10 rounded-[10px] ${meta.bgColor} flex items-center justify-center`}>
             <MergeIcon className="w-5 h-5 text-white" />
           </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useMcpStore } from '../../stores/mcpStore';
 
 export function CreateTab() {
@@ -6,6 +6,8 @@ export function CreateTab() {
     servers,
     selectedItemId,
     selectedItemType,
+    expandedServers,
+    toggleServerExpanded,
     openCreateServerModal,
     openCreateToolModal,
     openCreateResourceModal,
@@ -15,21 +17,9 @@ export function CreateTab() {
     deleteTool,
     deleteResource,
     deletePrompt,
+    updateServer,
+    updateItem,
   } = useMcpStore();
-
-  const [expandedServers, setExpandedServers] = useState(new Set());
-
-  const toggleServer = (serverId) => {
-    setExpandedServers((prev) => {
-      const next = new Set(prev);
-      if (next.has(serverId)) {
-        next.delete(serverId);
-      } else {
-        next.add(serverId);
-      }
-      return next;
-    });
-  };
 
   return (
     <div className="p-3">
@@ -71,8 +61,8 @@ export function CreateTab() {
               <ServerItem
                 key={server.id}
                 server={server}
-                isExpanded={expandedServers.has(server.id)}
-                onToggle={() => toggleServer(server.id)}
+                isExpanded={expandedServers.includes(server.id)}
+                onToggle={() => toggleServerExpanded(server.id)}
                 selectedItemId={selectedItemId}
                 selectedItemType={selectedItemType}
                 onSelectItem={selectItem}
@@ -83,6 +73,26 @@ export function CreateTab() {
                 onDeleteTool={(toolId) => deleteTool(server.id, toolId)}
                 onDeleteResource={(resourceId) => deleteResource(server.id, resourceId)}
                 onDeletePrompt={(promptId) => deletePrompt(server.id, promptId)}
+                onUpdateServer={(updates) => updateServer(server.id, updates)}
+                onDuplicateTool={(tool) => {
+                  const { addTool } = useMcpStore.getState();
+                  addTool(server.id, `${tool.name}_copy`, tool.description);
+                }}
+                onDuplicateResource={(resource) => {
+                  const { addResource } = useMcpStore.getState();
+                  addResource(
+                    server.id,
+                    `${resource.name}_copy`,
+                    resource.description,
+                    resource.uriTemplate,
+                    resource.mimeType,
+                    resource.resourceType
+                  );
+                }}
+                onDuplicatePrompt={(prompt) => {
+                  const { addPrompt } = useMcpStore.getState();
+                  addPrompt(server.id, `${prompt.name}_copy`, prompt.description, [...(prompt.arguments || [])]);
+                }}
               />
             ))}
           </div>
@@ -106,15 +116,35 @@ function ServerItem({
   onDeleteTool,
   onDeleteResource,
   onDeletePrompt,
+  onUpdateServer,
+  onDuplicateTool,
+  onDuplicateResource,
+  onDuplicatePrompt,
 }) {
   const [showMenu, setShowMenu] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(server.name);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (isEditing) {
+      inputRef.current?.select();
+    }
+  }, [isEditing]);
+
+  const handleRename = () => {
+    if (editName.trim() && editName !== server.name) {
+      onUpdateServer({ name: editName.trim() });
+    }
+    setIsEditing(false);
+  };
 
   return (
     <div>
       {/* Server header */}
       <div
         className="group flex items-center gap-1 px-2 py-1.5 rounded-md hover:bg-muted cursor-pointer"
-        onClick={onToggle}
+        onClick={() => !isEditing && onToggle()}
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -131,9 +161,28 @@ function ServerItem({
           <polyline points="9 18 15 12 9 6" />
         </svg>
 
-        <span className="flex-1 text-sm font-medium text-neutral-900 truncate">
-          {server.name}
-        </span>
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onBlur={handleRename}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleRename();
+              if (e.key === 'Escape') {
+                setEditName(server.name);
+                setIsEditing(false);
+              }
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="flex-1 text-sm font-medium text-neutral-900 bg-white border border-neutral-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-neutral-400"
+            autoFocus
+          />
+        ) : (
+          <span className="flex-1 text-sm font-medium text-neutral-900 truncate">
+            {server.name}
+          </span>
+        )}
 
         <span className="text-xs text-muted-foreground uppercase">
           {server.transport}
@@ -172,11 +221,31 @@ function ServerItem({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
+                    setShowMenu(false);
+                    setEditName(server.name);
+                    setIsEditing(true);
+                  }}
+                  className="w-full px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-100 flex items-center gap-2"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                  Rename
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
                     onDeleteServer();
                     setShowMenu(false);
                   }}
-                  className="w-full px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
+                  className="w-full px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
                 >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 6h18" />
+                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                  </svg>
                   Delete
                 </button>
               </div>
@@ -197,6 +266,7 @@ function ServerItem({
             selectedItemType={selectedItemType}
             onSelect={(id) => onSelectItem(server.id, id, 'tool')}
             onDelete={onDeleteTool}
+            onDuplicate={onDuplicateTool}
             onAdd={onAddTool}
           />
 
@@ -209,6 +279,7 @@ function ServerItem({
             selectedItemType={selectedItemType}
             onSelect={(id) => onSelectItem(server.id, id, 'resource')}
             onDelete={onDeleteResource}
+            onDuplicate={onDuplicateResource}
             onAdd={onAddResource}
           />
 
@@ -221,6 +292,7 @@ function ServerItem({
             selectedItemType={selectedItemType}
             onSelect={(id) => onSelectItem(server.id, id, 'prompt')}
             onDelete={onDeletePrompt}
+            onDuplicate={onDuplicatePrompt}
             onAdd={onAddPrompt}
           />
         </div>
@@ -229,7 +301,7 @@ function ServerItem({
   );
 }
 
-function SectionList({ title, items, itemType, selectedItemId, selectedItemType, onSelect, onDelete, onAdd }) {
+function SectionList({ title, items, itemType, selectedItemId, selectedItemType, onSelect, onDelete, onDuplicate, onAdd }) {
   return (
     <div>
       <div className="flex items-center justify-between px-2 mb-1">
@@ -253,6 +325,7 @@ function SectionList({ title, items, itemType, selectedItemId, selectedItemType,
             isSelected={selectedItemId === item.id && selectedItemType === itemType}
             onSelect={() => onSelect(item.id)}
             onDelete={() => onDelete(item.id)}
+            onDuplicate={() => onDuplicate(item)}
           />
         ))}
         {items.length === 0 && (
@@ -263,7 +336,7 @@ function SectionList({ title, items, itemType, selectedItemId, selectedItemType,
   );
 }
 
-function SidebarItem({ item, iconType, isSelected, onSelect, onDelete }) {
+function SidebarItem({ item, iconType, isSelected, onSelect, onDelete, onDuplicate }) {
   const [showMenu, setShowMenu] = useState(false);
 
   const getIcon = () => {
@@ -340,11 +413,30 @@ function SidebarItem({ item, iconType, isSelected, onSelect, onDelete }) {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  onDuplicate();
+                  setShowMenu(false);
+                }}
+                className="w-full px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-100 flex items-center gap-2"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+                Duplicate
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
                   onDelete();
                   setShowMenu(false);
                 }}
-                className="w-full px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
+                className="w-full px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
               >
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18" />
+                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                </svg>
                 Delete
               </button>
             </div>

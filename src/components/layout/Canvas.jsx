@@ -50,25 +50,35 @@ export function Canvas() {
     deleteNode,
     isNDVOpen,
     activeTab,
+    executionState,
   } = useMcpStore();
 
   const [selectedNodes, setSelectedNodes] = useState([]);
   const item = getSelectedItem();
 
-  // Convert store nodes/edges to React Flow format
+  // Convert store nodes/edges to React Flow format (only for tools)
   const flowNodes = useMemo(() => {
-    if (!item || (selectedItemType !== 'tool' && selectedItemType !== 'resource')) return [];
-    return item.nodes.map((node) => ({
-      id: node.id,
-      type: node.type,
-      position: node.position,
-      data: node.data,
-      selected: selectedNodes.includes(node.id),
-    }));
-  }, [item, selectedItemType, selectedNodes]);
+    if (!item || selectedItemType !== 'tool' || !item.nodes) return [];
+    return item.nodes.map((node) => {
+      // Get execution status for this node
+      const nodeExecutionState = executionState.nodeStates[node.id];
+      const executionStatus = nodeExecutionState?.status || null;
+
+      return {
+        id: node.id,
+        type: node.type,
+        position: node.position,
+        data: {
+          ...node.data,
+          executionStatus, // Pass execution status to node
+        },
+        selected: selectedNodes.includes(node.id),
+      };
+    });
+  }, [item, selectedItemType, selectedNodes, executionState.nodeStates]);
 
   const flowEdges = useMemo(() => {
-    if (!item || (selectedItemType !== 'tool' && selectedItemType !== 'resource')) return [];
+    if (!item || selectedItemType !== 'tool' || !item.edges) return [];
     return item.edges;
   }, [item, selectedItemType]);
 
@@ -89,9 +99,9 @@ export function Canvas() {
   }, [updateNodePosition]);
 
   const onEdgesChange = useCallback((changes) => {
-    // Handle edge deletions
+    // Handle edge deletions (only for tools)
     const deletions = changes.filter((c) => c.type === 'remove');
-    if (deletions.length > 0 && item && (selectedItemType === 'tool' || selectedItemType === 'resource')) {
+    if (deletions.length > 0 && item && selectedItemType === 'tool' && item.edges) {
       const remainingEdges = item.edges.filter(
         (e) => !deletions.some((d) => d.id === e.id)
       );

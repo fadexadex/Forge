@@ -2,9 +2,12 @@ import { useTestStore } from '../../stores/testStore';
 import { Button } from '../ui/Button';
 
 export function ConnectionStatus() {
-  const { serverUrl, serverInfo, disconnect } = useTestStore();
+  const { serverUrl, serverInfo, disconnect, testMode } = useTestStore();
 
   const displayUrl = (() => {
+    if (testMode === 'builder') {
+      return 'Local Builder Mode';
+    }
     try {
       const url = new URL(serverUrl);
       const path = url.pathname === '/' ? '' : url.pathname;

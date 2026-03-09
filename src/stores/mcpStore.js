@@ -78,6 +78,17 @@ export const useMcpStore = create(
 
       // UI state
       activeTab: 'create', // 'create' or 'test'
+      expandedServers: [], // Array of expanded server IDs
+
+      // Execution state
+      executionState: {
+        status: 'idle', // 'idle' | 'running' | 'completed' | 'failed'
+        nodeStates: {}, // { [nodeId]: { status, input, output, error, duration } }
+        currentNodeId: null,
+        startTime: null,
+        endTime: null,
+        error: null,
+      },
 
       // Getters
       getSelectedServer: () => {
@@ -110,6 +121,25 @@ export const useMcpStore = create(
 
       // Tab actions
       setActiveTab: (tab) => set({ activeTab: tab }),
+
+      // Server expansion actions
+      toggleServerExpanded: (serverId) => {
+        set((state) => {
+          const isExpanded = state.expandedServers.includes(serverId);
+          return {
+            expandedServers: isExpanded
+              ? state.expandedServers.filter(id => id !== serverId)
+              : [...state.expandedServers, serverId]
+          };
+        });
+      },
+
+      expandServer: (serverId) => {
+        set((state) => {
+          if (state.expandedServers.includes(serverId)) return state;
+          return { expandedServers: [...state.expandedServers, serverId] };
+        });
+      },
 
       // Modal actions
       openCreateServerModal: () => set({ isCreateServerModalOpen: true }),
@@ -171,10 +201,21 @@ export const useMcpStore = create(
 
         set((state) => ({
           servers: [...state.servers, newServer],
+          expandedServers: [...state.expandedServers, newServer.id], // Auto-expand new server
           isCreateServerModalOpen: false,
         }));
 
         return newServer;
+      },
+
+      updateServer: (serverId, updates) => {
+        set((state) => ({
+          servers: state.servers.map(server =>
+            server.id === serverId
+              ? { ...server, ...updates }
+              : server
+          ),
+        }));
       },
 
       deleteServer: (serverId) => {
@@ -231,7 +272,6 @@ export const useMcpStore = create(
       },
 
       addResource: (serverId, name, description, uriTemplate, mimeType, resourceType = 'template') => {
-        const { nodes, edges } = createInitialNodes();
         const newResource = {
           id: generateId(),
           name,
@@ -239,8 +279,8 @@ export const useMcpStore = create(
           uriTemplate,
           mimeType,
           resourceType,
-          nodes,
-          edges,
+          content: '', // Initialize content field
+          variables: [], // Initialize variables metadata array
         };
 
         set((state) => ({
@@ -277,6 +317,7 @@ export const useMcpStore = create(
           name,
           description,
           arguments: args,
+          messages: [], // Initialize messages array
         };
 
         set((state) => ({
@@ -338,14 +379,13 @@ export const useMcpStore = create(
         get().updateItem(updates);
       },
 
-      // Node actions
+      // Node actions (only for tools - resources don't have nodes)
       addNode: (nodeType, position = { x: 250, y: 250 }) => {
         const { selectedServerId, selectedItemId, selectedItemType, servers, nodePickerContext } = get();
-        if (!selectedServerId || !selectedItemId || (selectedItemType !== 'tool' && selectedItemType !== 'resource')) return null;
+        if (!selectedServerId || !selectedItemId || selectedItemType !== 'tool') return null;
 
         const server = servers.find(s => s.id === selectedServerId);
-        const container = selectedItemType === 'tool' ? server?.tools : server?.resources;
-        const item = container?.find(t => t.id === selectedItemId);
+        const item = server?.tools?.find(t => t.id === selectedItemId);
         if (!item) return null;
 
         const newNode = {
@@ -509,7 +549,7 @@ export const useMcpStore = create(
         }
 
         // Now update the specific tool or resource
-        const targetCollection = selectedItemType + 's'; // 'tools' or 'resources'
+        const targetCollection = 'tools'; // Node operations only apply to tools
 
         set({
           servers: servers.map(s =>
@@ -537,15 +577,14 @@ export const useMcpStore = create(
 
       updateNode: (nodeId, updates) => {
         const { selectedServerId, selectedItemId, selectedItemType, servers } = get();
-        if (!selectedServerId || !selectedItemId || (selectedItemType !== 'tool' && selectedItemType !== 'resource')) return;
-        const targetCollection = selectedItemType + 's';
+        if (!selectedServerId || !selectedItemId || selectedItemType !== 'tool') return;
 
         set({
           servers: servers.map(server =>
             server.id === selectedServerId
               ? {
                 ...server,
-                [targetCollection]: server[targetCollection].map(item =>
+                tools: server.tools.map(item =>
                   item.id === selectedItemId
                     ? {
                       ...item,
@@ -565,15 +604,14 @@ export const useMcpStore = create(
 
       updateNodeData: (nodeId, dataUpdates) => {
         const { selectedServerId, selectedItemId, selectedItemType, servers } = get();
-        if (!selectedServerId || !selectedItemId || (selectedItemType !== 'tool' && selectedItemType !== 'resource')) return;
-        const targetCollection = selectedItemType + 's';
+        if (!selectedServerId || !selectedItemId || selectedItemType !== 'tool') return;
 
         set({
           servers: servers.map(server =>
             server.id === selectedServerId
               ? {
                 ...server,
-                [targetCollection]: server[targetCollection].map(item =>
+                tools: server.tools.map(item =>
                   item.id === selectedItemId
                     ? {
                       ...item,
@@ -593,15 +631,14 @@ export const useMcpStore = create(
 
       deleteNode: (nodeId) => {
         const { selectedServerId, selectedItemId, selectedItemType, servers } = get();
-        if (!selectedServerId || !selectedItemId || (selectedItemType !== 'tool' && selectedItemType !== 'resource')) return;
-        const targetCollection = selectedItemType + 's';
+        if (!selectedServerId || !selectedItemId || selectedItemType !== 'tool') return;
 
         set({
           servers: servers.map(server =>
             server.id === selectedServerId
               ? {
                 ...server,
-                [targetCollection]: server[targetCollection].map(item =>
+                tools: server.tools.map(item =>
                   item.id === selectedItemId
                     ? {
                       ...item,
@@ -619,15 +656,14 @@ export const useMcpStore = create(
       // Update node positions (for React Flow drag)
       updateNodePosition: (nodeId, position) => {
         const { selectedServerId, selectedItemId, selectedItemType, servers } = get();
-        if (!selectedServerId || !selectedItemId || (selectedItemType !== 'tool' && selectedItemType !== 'resource')) return;
-        const targetCollection = selectedItemType + 's';
+        if (!selectedServerId || !selectedItemId || selectedItemType !== 'tool') return;
 
         set({
           servers: servers.map(server =>
             server.id === selectedServerId
               ? {
                 ...server,
-                [targetCollection]: server[targetCollection].map(item =>
+                tools: server.tools.map(item =>
                   item.id === selectedItemId
                     ? {
                       ...item,
@@ -645,15 +681,13 @@ export const useMcpStore = create(
         });
       },
 
-      // Edge actions
+      // Edge actions (only for tools)
       addEdge: (edge) => {
         const { selectedServerId, selectedItemId, selectedItemType, servers } = get();
-        if (!selectedServerId || !selectedItemId || (selectedItemType !== 'tool' && selectedItemType !== 'resource')) return;
-        const targetCollection = selectedItemType + 's';
+        if (!selectedServerId || !selectedItemId || selectedItemType !== 'tool') return;
 
         const server = servers.find(s => s.id === selectedServerId);
-        const container = selectedItemType === 'tool' ? server?.tools : server?.resources;
-        const item = container?.find(t => t.id === selectedItemId);
+        const item = server?.tools?.find(t => t.id === selectedItemId);
         if (!item) return;
 
         const newEdgeId = `${edge.source}-${edge.target}`;
@@ -670,7 +704,7 @@ export const useMcpStore = create(
             s.id === selectedServerId
               ? {
                 ...s,
-                [targetCollection]: s[targetCollection].map(t =>
+                tools: s.tools.map(t =>
                   t.id === selectedItemId
                     ? { ...t, edges: [...t.edges, newEdge] }
                     : t
@@ -683,15 +717,14 @@ export const useMcpStore = create(
 
       deleteEdge: (edgeId) => {
         const { selectedServerId, selectedItemId, selectedItemType, servers } = get();
-        if (!selectedServerId || !selectedItemId || (selectedItemType !== 'tool' && selectedItemType !== 'resource')) return;
-        const targetCollection = selectedItemType + 's';
+        if (!selectedServerId || !selectedItemId || selectedItemType !== 'tool') return;
 
         set({
           servers: servers.map(server =>
             server.id === selectedServerId
               ? {
                 ...server,
-                [targetCollection]: server[targetCollection].map(item =>
+                tools: server.tools.map(item =>
                   item.id === selectedItemId
                     ? { ...item, edges: item.edges.filter(e => e.id !== edgeId) }
                     : item
@@ -702,18 +735,71 @@ export const useMcpStore = create(
         });
       },
 
-      // Update edges (for React Flow)
+      // Execution actions
+      resetExecutionState: () => {
+        set({
+          executionState: {
+            status: 'idle',
+            nodeStates: {},
+            currentNodeId: null,
+            startTime: null,
+            endTime: null,
+            error: null,
+          },
+        });
+      },
+
+      setExecutionStatus: (status, error = null) => {
+        set((state) => ({
+          executionState: {
+            ...state.executionState,
+            status,
+            error,
+            endTime: status === 'completed' || status === 'failed' ? Date.now() : state.executionState.endTime,
+          },
+        }));
+      },
+
+      setNodeExecutionState: (nodeId, nodeState) => {
+        set((state) => ({
+          executionState: {
+            ...state.executionState,
+            currentNodeId: nodeState.status === 'running' ? nodeId : state.executionState.currentNodeId,
+            nodeStates: {
+              ...state.executionState.nodeStates,
+              [nodeId]: {
+                ...state.executionState.nodeStates[nodeId],
+                ...nodeState,
+              },
+            },
+          },
+        }));
+      },
+
+      startExecution: () => {
+        set({
+          executionState: {
+            status: 'running',
+            nodeStates: {},
+            currentNodeId: null,
+            startTime: Date.now(),
+            endTime: null,
+            error: null,
+          },
+        });
+      },
+
+      // Update edges (for React Flow - only for tools)
       setEdges: (edges) => {
         const { selectedServerId, selectedItemId, selectedItemType, servers } = get();
-        if (!selectedServerId || !selectedItemId || (selectedItemType !== 'tool' && selectedItemType !== 'resource')) return;
-        const targetCollection = selectedItemType + 's';
+        if (!selectedServerId || !selectedItemId || selectedItemType !== 'tool') return;
 
         set({
           servers: servers.map(server =>
             server.id === selectedServerId
               ? {
                 ...server,
-                [targetCollection]: server[targetCollection].map(item =>
+                tools: server.tools.map(item =>
                   item.id === selectedItemId
                     ? { ...item, edges }
                     : item

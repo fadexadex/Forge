@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { useMcpStore } from '../../../stores/mcpStore';
 import { NODE_TYPE_META } from '../../../utils/constants';
 
-export function NodeWrapper({ nodeId, nodeType, selected, children }) {
+export function NodeWrapper({ nodeId, nodeType, selected, children, executionStatus }) {
   const [isHovered, setIsHovered] = useState(false);
   const { deleteNode, openNDV } = useMcpStore();
 
@@ -23,6 +23,11 @@ export function NodeWrapper({ nodeId, nodeType, selected, children }) {
 
   // Show the floating toolbar if the node is hovered OR selected
   const showToolbar = (isHovered || selected) && isDeletable;
+
+  // Execution status styling
+  const isRunning = executionStatus === 'running';
+  const isCompleted = executionStatus === 'completed';
+  const isFailed = executionStatus === 'failed';
 
   return (
     <div
@@ -65,6 +70,30 @@ export function NodeWrapper({ nodeId, nodeType, selected, children }) {
       {/* Node Content */}
       <div className="relative flex flex-col items-center">
         {children}
+
+        {/* Execution status badge - positioned at bottom-right corner of inner icon like n8n */}
+        {isCompleted && (
+          <div className="absolute top-[42px] left-[calc(50%+20px)] w-[16px] h-[16px] bg-green-500 rounded-full flex items-center justify-center shadow-sm z-10 animate-scale-in">
+            <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </div>
+        )}
+        {isFailed && (
+          <div className="absolute top-[42px] left-[calc(50%+20px)] w-[16px] h-[16px] bg-red-500 rounded-full flex items-center justify-center shadow-sm z-10 animate-scale-in">
+            <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </div>
+        )}
+        {isRunning && (
+          <div className="absolute top-[42px] left-[calc(50%+20px)] w-[16px] h-[16px] bg-blue-500 rounded-full flex items-center justify-center shadow-sm z-10">
+            <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="4">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
+          </div>
+        )}
       </div>
     </div>
   );

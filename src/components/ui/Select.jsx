@@ -4,6 +4,7 @@ export const Select = forwardRef(({
   label,
   options = [],
   error,
+  placeholder,
   className = '',
   ...props
 }, ref) => {
@@ -30,6 +31,11 @@ export const Select = forwardRef(({
         `}
         {...props}
       >
+        {placeholder && (
+          <option value="" disabled>
+            {placeholder}
+          </option>
+        )}
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}

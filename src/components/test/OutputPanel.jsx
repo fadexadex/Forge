@@ -86,11 +86,41 @@ export function OutputPanel() {
       </div>
 
       {/* Response body */}
-      <div className="flex-1 overflow-auto scrollbar-thin">
-        <ResponseViewer
-          data={lastResponse.success ? lastResponse.data : lastResponse.error}
-          isError={!lastResponse.success}
-        />
+      <div className="flex-1 overflow-auto scrollbar-thin flex flex-col gap-4">
+        <div>
+          <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Final Output</h4>
+          <ResponseViewer
+            data={lastResponse.success ? lastResponse.data : lastResponse.error}
+            isError={!lastResponse.success}
+          />
+        </div>
+
+        {lastResponse.steps && lastResponse.steps.length > 0 && (
+          <div className="border-t border-neutral-100 pt-4">
+            <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Execution Steps</h4>
+            <div className="space-y-3">
+              {lastResponse.steps.map((step, i) => (
+                <div key={i} className="rounded-md border border-neutral-200 bg-neutral-50 p-3 text-xs">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-semibold text-neutral-700">{step.type}</span>
+                    <span className="text-neutral-400 text-[10px]">{step.nodeId}</span>
+                  </div>
+                  {step.error && (
+                    <div className="text-red-500 mb-2 font-medium">Error: {step.error}</div>
+                  )}
+                  {step.output !== undefined && (
+                    <div>
+                      <span className="text-neutral-500 mb-1 block">Output state:</span>
+                      <pre className="bg-white p-2 rounded border border-neutral-100 overflow-auto max-h-40">
+                        {JSON.stringify(step.output, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

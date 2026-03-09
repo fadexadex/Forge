@@ -144,3 +144,112 @@ h6 {
 .connection-pulse {
   animation: connection-pulse 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
+
+/* Execution animation - scale in for badges */
+@keyframes scale-in {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-scale-in {
+  animation: scale-in 0.3s ease-out forwards;
+}
+
+/* Fade in animation for edge labels */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out forwards;
+}
+
+/* Execution running pulse */
+@keyframes execution-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(59, 130, 246, 0);
+  }
+}
+
+.animate-execution-pulse {
+  animation: execution-pulse 1s ease-in-out infinite;
+}
+
+/* n8n style running ring animation - rotating border */
+@keyframes execution-ring-rotate {
+  0% {
+    transform: translate(-50%, 0) rotate(0deg);
+  }
+  100% {
+    transform: translate(-50%, 0) rotate(360deg);
+  }
+}
+
+.execution-ring-running {
+  position: relative;
+  overflow: visible;
+}
+
+.execution-ring-running::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 16px;
+  padding: 2px;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    transparent 60deg,
+    #22c55e 120deg,
+    #22c55e 180deg,
+    transparent 240deg,
+    transparent 360deg
+  );
+  -webkit-mask: 
+    linear-gradient(#fff 0 0) content-box, 
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: execution-ring-spin 1.2s linear infinite;
+}
+
+@keyframes execution-ring-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Simple border pulse animation for running state */
+@keyframes execution-border-pulse {
+  0%, 100% {
+    border-color: #22c55e;
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+  }
+  50% {
+    border-color: #16a34a;
+    box-shadow: 0 0 8px 2px rgba(34, 197, 94, 0.3);
+  }
+}
+
+.execution-border-running {
+  animation: execution-border-pulse 1.2s ease-in-out infinite;
+}
