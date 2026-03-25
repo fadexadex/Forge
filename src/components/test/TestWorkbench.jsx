@@ -65,7 +65,7 @@ export function TestWorkbench() {
   // State 1: Disconnected
   if (connectionStatus === 'disconnected') {
     return (
-      <div className="flex-1 bg-muted/30">
+      <div className="flex-1 bg-white">
         <TestEmptyState
           icon={<ServerIcon />}
           heading="Connect to an MCP Server"
@@ -78,7 +78,7 @@ export function TestWorkbench() {
   // State 2: Connecting
   if (connectionStatus === 'connecting') {
     return (
-      <div className="flex-1 flex items-center justify-center bg-muted/30">
+      <div className="flex-1 flex items-center justify-center bg-white">
         <div className="text-center">
           <div className="flex justify-center mb-4">
             <span className="relative flex h-4 w-4">
@@ -95,7 +95,7 @@ export function TestWorkbench() {
   // State 3: Connection Error
   if (connectionStatus === 'error') {
     return (
-      <div className="flex-1 bg-muted/30">
+      <div className="flex-1 bg-white">
         <TestEmptyState
           icon={<WarningIcon />}
           heading="Connection failed"
@@ -117,7 +117,7 @@ export function TestWorkbench() {
       const selectedTool = getSelectedTool();
       if (!selectedToolName || !selectedTool) {
         return (
-          <div className="flex-1 bg-muted/30">
+          <div className="flex-1 bg-white">
             <TestEmptyState
               icon={<WrenchIcon />}
               heading="Select a tool"
@@ -140,7 +140,7 @@ export function TestWorkbench() {
     if (selectedPrimitiveType === 'resources') {
       if (resources.length === 0) {
         return (
-          <div className="flex-1 bg-muted/30">
+          <div className="flex-1 bg-white">
             <TestEmptyState
               icon={<BookIcon />}
               heading="No resources available"
@@ -151,7 +151,7 @@ export function TestWorkbench() {
       }
       if (!selectedResourceUri) {
         return (
-          <div className="flex-1 bg-muted/30">
+          <div className="flex-1 bg-white">
             <TestEmptyState
               icon={<BookIcon />}
               heading="Select a resource"
@@ -165,7 +165,7 @@ export function TestWorkbench() {
     if (selectedPrimitiveType === 'prompts') {
       if (prompts.length === 0) {
         return (
-          <div className="flex-1 bg-muted/30">
+          <div className="flex-1 bg-white">
             <TestEmptyState
               icon={<MessageIcon />}
               heading="No prompts available"
@@ -176,7 +176,7 @@ export function TestWorkbench() {
       }
       if (!selectedPromptName) {
         return (
-          <div className="flex-1 bg-muted/30">
+          <div className="flex-1 bg-white">
             <TestEmptyState
               icon={<MessageIcon />}
               heading="Select a prompt"

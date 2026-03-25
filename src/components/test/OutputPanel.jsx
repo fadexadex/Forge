@@ -1,6 +1,5 @@
 import { useTestStore } from '../../stores/testStore';
 import { ResponseViewer } from './ResponseViewer';
-import { Button } from '../ui/Button';
 
 export function OutputPanel() {
   const { lastResponse, isExecuting } = useTestStore();
@@ -15,24 +14,15 @@ export function OutputPanel() {
   // Empty state
   if (!lastResponse && !isExecuting) {
     return (
-      <div className="flex-1 flex items-center justify-center min-w-0">
-        <div className="text-center">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="32"
-            height="32"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="mx-auto mb-3 text-neutral-300"
-          >
-            <polyline points="16 18 22 12 16 6" />
-            <polyline points="8 6 2 12 8 18" />
-          </svg>
-          <p className="text-sm text-muted-foreground">Run the tool to see output here</p>
+      <div className="w-1/2 flex items-center justify-center bg-white min-w-0">
+        <div className="text-center max-w-[240px]">
+          <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-neutral-50 flex items-center justify-center border border-neutral-100">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-400">
+              <polyline points="16 18 22 12 16 6" />
+              <polyline points="8 6 2 12 8 18" />
+            </svg>
+          </div>
+          <p className="text-sm text-neutral-500">Run the tool to see output here</p>
         </div>
       </div>
     );
@@ -41,86 +31,87 @@ export function OutputPanel() {
   // Loading state
   if (isExecuting) {
     return (
-      <div className="flex-1 p-4 min-w-0 space-y-3">
-        <div className="h-4 w-24 bg-neutral-200 rounded animate-pulse" />
+      <div className="w-1/2 p-6 bg-white min-w-0 space-y-4">
+        <div className="h-5 w-32 bg-neutral-100 rounded-md animate-pulse" />
         <div className="space-y-2">
-          <div className="h-3 bg-neutral-100 rounded animate-pulse" />
-          <div className="h-3 bg-neutral-100 rounded animate-pulse w-3/4" />
-          <div className="h-3 bg-neutral-100 rounded animate-pulse w-1/2" />
+          <div className="h-4 bg-neutral-50 rounded animate-pulse" />
+          <div className="h-4 bg-neutral-50 rounded animate-pulse w-4/5" />
+          <div className="h-4 bg-neutral-50 rounded animate-pulse w-2/3" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 p-4 overflow-hidden">
-      {/* Status bar */}
-      <div className="flex items-center justify-between mb-3 shrink-0">
-        <div className="flex items-center gap-2">
-          <span
-            className={`inline-flex h-2 w-2 rounded-full ${lastResponse.success ? 'bg-green-500' : 'bg-red-500'}`}
-          />
-          <span className={`text-sm font-medium ${lastResponse.success ? 'text-green-700' : 'text-red-700'}`}>
+    <div className="w-1/2 flex flex-col min-w-0 bg-white overflow-hidden">
+      {/* Status Header */}
+      <div className="px-6 py-4 border-b border-neutral-200 flex items-center justify-between shrink-0 bg-white">
+        <div className="flex items-center gap-3">
+          <h3 className="text-sm font-medium text-neutral-900">Output</h3>
+          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium ${
+            lastResponse.success 
+              ? 'bg-green-50 text-green-700 border border-green-200/50' 
+              : 'bg-red-50 text-red-700 border border-red-200/50'
+          }`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${lastResponse.success ? 'bg-green-500' : 'bg-red-500'}`} />
             {lastResponse.success ? 'Success' : 'Error'}
           </span>
-          <span className="bg-muted text-xs px-2 py-0.5 rounded text-muted-foreground">
+          <span className="text-[11px] font-medium text-neutral-500 bg-neutral-50 px-2 py-0.5 rounded-md border border-neutral-200">
             {lastResponse.responseTime}ms
           </span>
         </div>
-        <Button variant="ghost" size="icon" onClick={handleCopyResponse}>
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
+        
+        <button 
+          onClick={handleCopyResponse}
+          className="text-neutral-400 hover:text-neutral-900 transition-colors"
+          title="Copy output"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
             <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
           </svg>
-        </Button>
+        </button>
       </div>
 
       {/* Response body */}
-      <div className="flex-1 overflow-auto scrollbar-thin flex flex-col gap-4">
-        <div>
-          <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Final Output</h4>
-          <ResponseViewer
-            data={lastResponse.success ? lastResponse.data : lastResponse.error}
-            isError={!lastResponse.success}
-          />
-        </div>
-
-        {lastResponse.steps && lastResponse.steps.length > 0 && (
-          <div className="border-t border-neutral-100 pt-4">
-            <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Execution Steps</h4>
-            <div className="space-y-3">
-              {lastResponse.steps.map((step, i) => (
-                <div key={i} className="rounded-md border border-neutral-200 bg-neutral-50 p-3 text-xs">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="font-semibold text-neutral-700">{step.type}</span>
-                    <span className="text-neutral-400 text-[10px]">{step.nodeId}</span>
-                  </div>
-                  {step.error && (
-                    <div className="text-red-500 mb-2 font-medium">Error: {step.error}</div>
-                  )}
-                  {step.output !== undefined && (
-                    <div>
-                      <span className="text-neutral-500 mb-1 block">Output state:</span>
-                      <pre className="bg-white p-2 rounded border border-neutral-100 overflow-auto max-h-40">
-                        {JSON.stringify(step.output, null, 2)}
-                      </pre>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+      <div className="flex-1 overflow-auto scrollbar-thin p-6">
+        <div className="flex flex-col gap-6">
+          <div>
+            <ResponseViewer
+              data={lastResponse.success ? lastResponse.data : lastResponse.error}
+              isError={!lastResponse.success}
+            />
           </div>
-        )}
+
+          {lastResponse.steps && lastResponse.steps.length > 0 && (
+            <div className="border-t border-neutral-200 pt-6">
+              <h4 className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider mb-4">Execution Steps</h4>
+              <div className="space-y-4">
+                {lastResponse.steps.map((step, i) => (
+                  <div key={i} className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="text-sm font-medium text-neutral-900">{step.type}</span>
+                      <span className="text-[11px] font-mono text-neutral-400 bg-neutral-50 px-2 py-0.5 rounded">{step.nodeId}</span>
+                    </div>
+                    {step.error && (
+                      <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-700 font-medium mb-3">
+                        {step.error}
+                      </div>
+                    )}
+                    {step.output !== undefined && (
+                      <div>
+                        <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider mb-2 block">State Output</span>
+                        <pre className="bg-neutral-900 p-3 rounded-lg overflow-auto max-h-48 text-[11px] font-mono text-green-400/90 whitespace-pre-wrap leading-relaxed shadow-inner">
+                          {JSON.stringify(step.output, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

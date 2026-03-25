@@ -3,12 +3,36 @@ import { useTestStore } from '../../stores/testStore';
 
 export function Header() {
   const { getSelectedServer, getSelectedTool, activeTab, previousTab, setActiveTab } = useMcpStore();
-  const { connectionStatus, serverInfo, getSelectedTool: getTestTool } = useTestStore();
+  const { 
+    connectionStatus, 
+    serverInfo, 
+    getSelectedTool: getTestTool,
+    getSelectedResource: getTestResource,
+    getSelectedPrompt: getTestPrompt,
+    selectedPrimitiveType
+  } = useTestStore();
+
   const server = getSelectedServer();
   const tool = getSelectedTool();
   const isTestMode = activeTab === 'test';
   const isSettingsMode = activeTab === 'settings';
+  
   const testTool = getTestTool();
+  const testResource = getTestResource();
+  const testPrompt = getTestPrompt();
+
+  const getTestActiveItemName = () => {
+    switch (selectedPrimitiveType) {
+      case 'chat': return 'Chat';
+      case 'apps': return 'MCP Apps';
+      case 'tools': return testTool?.name;
+      case 'resources': return testResource?.name;
+      case 'prompts': return testPrompt?.name;
+      default: return null;
+    }
+  };
+
+  const testActiveItemName = getTestActiveItemName();
 
   return (
     <header className="h-14 flex items-center justify-between px-4 border-b border-border bg-white">
@@ -36,10 +60,10 @@ export function Header() {
                 </div>
               </>
             )}
-            {testTool && (
+            {testActiveItemName && (
               <>
                 <span className="text-neutral-300">/</span>
-                <span className="text-muted-foreground">{testTool.name}</span>
+                <span className="text-muted-foreground">{testActiveItemName}</span>
               </>
             )}
           </>
