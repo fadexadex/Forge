@@ -6,7 +6,7 @@ import { ResourceList } from './ResourceList';
 import { PromptList } from './PromptList';
 
 export function TestSidebar() {
-  const { connectionStatus, selectedPrimitiveType } = useTestStore();
+  const { connectionStatus, selectedPrimitiveType, setSelectedPrimitiveType } = useTestStore();
   const isConnected = connectionStatus === 'connected';
 
   const renderList = () => {
@@ -16,6 +16,8 @@ export function TestSidebar() {
       case 'prompts':
         return <PromptList />;
       case 'tools':
+      case 'chat':
+      case 'apps':
       default:
         return <ToolList />;
     }
@@ -26,6 +28,47 @@ export function TestSidebar() {
       {isConnected ? (
         <>
           <ConnectionStatus />
+          
+          {/* Main sections */}
+          <div className="py-2 border-b border-border">
+            <button
+              onClick={() => setSelectedPrimitiveType('chat')}
+              className={`w-full text-left px-4 py-2 text-sm font-medium transition-colors ${
+                selectedPrimitiveType === 'chat'
+                  ? 'bg-neutral-100 text-neutral-900'
+                  : 'text-muted-foreground hover:bg-neutral-50 hover:text-neutral-900'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                Chat
+              </div>
+            </button>
+            <button
+              onClick={() => setSelectedPrimitiveType('apps')}
+              className={`w-full text-left px-4 py-2 text-sm font-medium transition-colors ${
+                selectedPrimitiveType === 'apps'
+                  ? 'bg-neutral-100 text-neutral-900'
+                  : 'text-muted-foreground hover:bg-neutral-50 hover:text-neutral-900'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect width="18" height="18" x="3" y="3" rx="2" />
+                  <path d="M3 9h18" />
+                  <path d="M9 21V9" />
+                </svg>
+                App Builder
+              </div>
+            </button>
+          </div>
+
+          <div className="px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Primitives
+          </div>
+
           {renderList()}
         </>
       ) : (

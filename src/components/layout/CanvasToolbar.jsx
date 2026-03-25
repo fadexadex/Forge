@@ -11,6 +11,7 @@ export function CanvasToolbar() {
     startExecution,
     setExecutionStatus,
     setNodeExecutionState,
+    setNodeExecutionData,
     resetExecutionState,
   } = useMcpStore();
   const tool = getSelectedItem();
@@ -146,41 +147,41 @@ export function CanvasToolbar() {
     const ANIMATION_DELAY = 600;
 
     try {
-      // Animate through each node
-      for (let i = 0; i < executionOrder.length; i++) {
-        const nodeId = executionOrder[i];
+      // 1. Actually execute the workflow to get the real path and data
+      const result = await executeWorkflow(nodes, edges, inputs);
+      
+      // 2. Animate through the real execution steps
+      for (let i = 0; i < result.steps.length; i++) {
+        const step = result.steps[i];
+        const nodeId = step.nodeId;
 
         // Set node to running
         setNodeExecutionState(nodeId, { status: 'running' });
-
+        
         // Wait for animation
         await new Promise(resolve => setTimeout(resolve, ANIMATION_DELAY));
 
-        // Set node to completed
-        setNodeExecutionState(nodeId, { status: 'completed' });
+        // Update data and state based on whether this step had an error
+        if (step.error) {
+          setNodeExecutionState(nodeId, { status: 'failed', error: step.error });
+          setNodeExecutionData(nodeId, { input: step.input, error: step.error });
+        } else {
+          setNodeExecutionState(nodeId, { status: 'completed' });
+          setNodeExecutionData(nodeId, { input: step.input, output: step.output });
+        }
       }
-
-      // Actually execute the workflow
-      const result = await executeWorkflow(nodes, edges, inputs);
 
       // Update final result
       setExecutionResult(result);
       setExecutionStatus(result.success ? 'completed' : 'failed', result.error);
       setShowResults(true);
 
-      // If failed, mark the failing node
-      if (!result.success && result.steps && result.steps.length > 0) {
-        const failedStep = result.steps.find(s => s.error);
-        if (failedStep) {
-          setNodeExecutionState(failedStep.nodeId, { status: 'failed', error: failedStep.error });
-        }
-      }
     } catch (err) {
       setExecutionResult({ success: false, error: err.message, steps: [] });
       setExecutionStatus('failed', err.message);
       setShowResults(true);
     }
-  }, [tool, startExecution, setNodeExecutionState, setExecutionStatus, getExecutionOrder]);
+  }, [tool, startExecution, setNodeExecutionState, setNodeExecutionData, setExecutionStatus, getExecutionOrder]);
 
   if (!tool) return null;
 

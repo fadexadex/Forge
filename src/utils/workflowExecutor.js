@@ -2,7 +2,11 @@ import { WORKFLOW_NODE_TYPES } from './constants';
 
 function evaluateExpression(expr, data) {
   try {
-    const fn = new Function('data', `return ${expr};`);
+    const fn = new Function('data', `
+      with (data) {
+        return ${expr};
+      }
+    `);
     return fn(data);
   } catch (err) {
     console.error('Expression error:', err);

@@ -6,6 +6,9 @@ import { OutputPanel } from './OutputPanel';
 import { HistoryPanel } from './HistoryPanel';
 import { ResourcesTestPanel } from './ResourcesTestPanel';
 import { PromptsTestPanel } from './PromptsTestPanel';
+import { ChatPanel } from './ChatPanel';
+import { AppBuilderPanel } from './AppBuilderPanel';
+import { LogBusPanel } from './LogBusPanel';
 
 // Icons
 const ServerIcon = () => (
@@ -17,17 +20,17 @@ const ServerIcon = () => (
   </svg>
 );
 
-const WrenchIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
-    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-  </svg>
-);
-
 const WarningIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
     <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
     <path d="M12 9v4" />
     <path d="M12 17h.01" />
+  </svg>
+);
+
+const WrenchIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
+    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
   </svg>
 );
 
@@ -43,29 +46,6 @@ const MessageIcon = () => (
   </svg>
 );
 
-// Tab Button Component
-function TabButton({ active, onClick, children, count }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-        active
-          ? 'text-neutral-900 border-neutral-900'
-          : 'text-muted-foreground border-transparent hover:text-neutral-700 hover:border-neutral-300'
-      }`}
-    >
-      {children}
-      {typeof count === 'number' && (
-        <span className={`ml-1.5 px-1.5 py-0.5 text-xs rounded-full ${
-          active ? 'bg-neutral-900 text-white' : 'bg-muted text-muted-foreground'
-        }`}>
-          {count}
-        </span>
-      )}
-    </button>
-  );
-}
-
 export function TestWorkbench() {
   const {
     connectionStatus,
@@ -73,7 +53,6 @@ export function TestWorkbench() {
     selectedResourceUri,
     selectedPromptName,
     selectedPrimitiveType,
-    setSelectedPrimitiveType,
     getSelectedTool,
     tools,
     resources,
@@ -125,109 +104,99 @@ export function TestWorkbench() {
     );
   }
 
-  // State 4: Connected - Show Primitive Type Tabs
-  return (
-    <div className="flex-1 flex flex-col bg-white overflow-hidden">
-      {/* Primitive Type Tabs */}
-      <div className="border-b border-border bg-white shrink-0">
-        <div className="flex">
-          <TabButton
-            active={selectedPrimitiveType === 'tools'}
-            onClick={() => setSelectedPrimitiveType('tools')}
-            count={tools.length}
-          >
-            Tools
-          </TabButton>
-          <TabButton
-            active={selectedPrimitiveType === 'resources'}
-            onClick={() => setSelectedPrimitiveType('resources')}
-            count={resources.length}
-          >
-            Resources
-          </TabButton>
-          <TabButton
-            active={selectedPrimitiveType === 'prompts'}
-            onClick={() => setSelectedPrimitiveType('prompts')}
-            count={prompts.length}
-          >
-            Prompts
-          </TabButton>
+  // Helper to render the main content area based on selected tab
+  const renderMainContent = () => {
+    if (selectedPrimitiveType === 'chat') {
+      return <ChatPanel />;
+    }
+    if (selectedPrimitiveType === 'apps') {
+      return <AppBuilderPanel />;
+    }
+    if (selectedPrimitiveType === 'tools') {
+      if (!selectedToolName || !selectedTool) {
+        return (
+          <div className="flex-1 bg-muted/30">
+            <TestEmptyState
+              icon={<WrenchIcon />}
+              heading="Select a tool"
+              subtitle="Choose a tool from the sidebar to inspect and test it."
+            />
+          </div>
+        );
+      }
+      return (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <ToolHeader tool={selectedTool} />
+          <div className="flex-1 flex min-h-0">
+            <InputPanel tool={selectedTool} />
+            <OutputPanel />
+          </div>
+          <HistoryPanel />
         </div>
+      );
+    }
+    if (selectedPrimitiveType === 'resources') {
+      if (resources.length === 0) {
+        return (
+          <div className="flex-1 bg-muted/30">
+            <TestEmptyState
+              icon={<BookIcon />}
+              heading="No resources available"
+              subtitle="This server has no resources defined. Create resources in the Builder to test them here."
+            />
+          </div>
+        );
+      }
+      if (!selectedResourceUri) {
+        return (
+          <div className="flex-1 bg-muted/30">
+            <TestEmptyState
+              icon={<BookIcon />}
+              heading="Select a resource"
+              subtitle="Choose a resource from the sidebar to test it."
+            />
+          </div>
+        );
+      }
+      return <ResourcesTestPanel />;
+    }
+    if (selectedPrimitiveType === 'prompts') {
+      if (prompts.length === 0) {
+        return (
+          <div className="flex-1 bg-muted/30">
+            <TestEmptyState
+              icon={<MessageIcon />}
+              heading="No prompts available"
+              subtitle="This server has no prompts defined. Create prompts in the Builder to test them here."
+            />
+          </div>
+        );
+      }
+      if (!selectedPromptName) {
+        return (
+          <div className="flex-1 bg-muted/30">
+            <TestEmptyState
+              icon={<MessageIcon />}
+              heading="Select a prompt"
+              subtitle="Choose a prompt from the sidebar to test it."
+            />
+          </div>
+        );
+      }
+      return <PromptsTestPanel />;
+    }
+    return null;
+  };
+
+  return (
+    <div className="flex-1 flex bg-white overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Render main content based on selection */}
+        {renderMainContent()}
       </div>
-
-      {/* Tools View */}
-      {selectedPrimitiveType === 'tools' && (
-        <>
-          {!selectedToolName || !selectedTool ? (
-            <div className="flex-1 bg-muted/30">
-              <TestEmptyState
-                icon={<WrenchIcon />}
-                heading="Select a tool"
-                subtitle="Choose a tool from the sidebar to inspect and test it."
-              />
-            </div>
-          ) : (
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <ToolHeader tool={selectedTool} />
-              <div className="flex-1 flex min-h-0">
-                <InputPanel tool={selectedTool} />
-                <OutputPanel />
-              </div>
-              <HistoryPanel />
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Resources View */}
-      {selectedPrimitiveType === 'resources' && (
-        <>
-          {resources.length === 0 ? (
-            <div className="flex-1 bg-muted/30">
-              <TestEmptyState
-                icon={<BookIcon />}
-                heading="No resources available"
-                subtitle="This server has no resources defined. Create resources in the Builder to test them here."
-              />
-            </div>
-          ) : !selectedResourceUri ? (
-            <div className="flex-1 bg-muted/30">
-              <TestEmptyState
-                icon={<BookIcon />}
-                heading="Select a resource"
-                subtitle="Choose a resource from the sidebar to test it."
-              />
-            </div>
-          ) : (
-            <ResourcesTestPanel />
-          )}
-        </>
-      )}
-
-      {/* Prompts View */}
-      {selectedPrimitiveType === 'prompts' && (
-        <>
-          {prompts.length === 0 ? (
-            <div className="flex-1 bg-muted/30">
-              <TestEmptyState
-                icon={<MessageIcon />}
-                heading="No prompts available"
-                subtitle="This server has no prompts defined. Create prompts in the Builder to test them here."
-              />
-            </div>
-          ) : !selectedPromptName ? (
-            <div className="flex-1 bg-muted/30">
-              <TestEmptyState
-                icon={<MessageIcon />}
-                heading="Select a prompt"
-                subtitle="Choose a prompt from the sidebar to test it."
-              />
-            </div>
-          ) : (
-            <PromptsTestPanel />
-          )}
-        </>
-      )}
+      
+      {/* Log Bus Side Panel - visible mainly in chat/apps mode or overall */}
+      <LogBusPanel />
     </div>
   );
 }

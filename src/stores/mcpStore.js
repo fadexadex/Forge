@@ -881,6 +881,18 @@ export const useMcpStore = create(
         }));
       },
 
+      setNodeExecutionData: (nodeId, data) => {
+        set((state) => ({
+          nodeExecutionData: {
+            ...state.nodeExecutionData,
+            [nodeId]: {
+              ...state.nodeExecutionData[nodeId],
+              ...data,
+            },
+          },
+        }));
+      },
+
       startExecution: () => {
         set({
           executionState: {
