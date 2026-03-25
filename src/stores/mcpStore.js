@@ -82,6 +82,7 @@ export const useMcpStore = create(
 
       // UI state
       activeTab: 'create', // 'create' or 'test'
+      previousTab: 'create', // 'create' or 'test'
       expandedServers: [], // Array of expanded server IDs
 
       // Execution state
@@ -124,7 +125,10 @@ export const useMcpStore = create(
       },
 
       // Tab actions
-      setActiveTab: (tab) => set({ activeTab: tab }),
+      setActiveTab: (tab) => set((state) => ({
+        activeTab: tab,
+        previousTab: state.activeTab !== 'settings' ? state.activeTab : state.previousTab
+      })),
 
       // Server expansion actions
       toggleServerExpanded: (serverId) => {

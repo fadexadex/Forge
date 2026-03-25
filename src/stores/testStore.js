@@ -59,6 +59,72 @@ const MOCK_TOOLS = [
   },
 ];
 
+const MOCK_RESOURCES = [
+  {
+    uri: 'file:///logs/app.log',
+    name: 'Application Logs',
+    description: 'Recent application log entries for debugging',
+    mimeType: 'text/plain',
+    resourceType: 'file',
+    content: '[INFO] Server started on port 8080\n[WARN] High memory usage detected\n[ERROR] Failed to connect to database at 10.0.0.4',
+  },
+  {
+    uri: 'postgres://db/users/schema',
+    name: 'Users Table Schema',
+    description: 'Database schema for the users table',
+    mimeType: 'application/json',
+    resourceType: 'database',
+    content: '{\n  "table": "users",\n  "columns": [\n    {"name": "id", "type": "uuid", "primary": true},\n    {"name": "email", "type": "varchar(255)", "unique": true},\n    {"name": "created_at", "type": "timestamp"}\n  ]\n}',
+  },
+  {
+    uri: 'api://github.com/repos/{owner}/{repo}/issues',
+    name: 'GitHub Issues',
+    description: 'Template for fetching GitHub issues for a repository',
+    mimeType: 'application/json',
+    resourceType: 'template',
+    variables: [
+      { name: 'owner', description: 'Repository owner (e.g., octocat)' },
+      { name: 'repo', description: 'Repository name (e.g., Hello-World)' }
+    ],
+    content: '[\n  { "id": 1, "title": "Bug: Cannot login", "state": "open", "repo": "{{owner}}/{{repo}}" },\n  { "id": 2, "title": "Feature: Add dark mode", "state": "closed", "repo": "{{owner}}/{{repo}}" }\n]',
+  }
+];
+
+const MOCK_PROMPTS = [
+  {
+    name: 'analyze_error',
+    description: 'Analyze an error message and suggest fixes',
+    arguments: [
+      { name: 'error_message', description: 'The error message to analyze', required: true },
+      { name: 'context', description: 'Surrounding code or context', required: false }
+    ],
+    messages: [
+      {
+        role: 'user',
+        content: 'Please analyze this error message:\n\n```\n{{error_message}}\n```\n\nContext:\n```\n{{context}}\n```\n\nWhat could be causing this and how do I fix it?'
+      }
+    ]
+  },
+  {
+    name: 'code_review',
+    description: 'Perform a code review on a specific component or function',
+    arguments: [
+      { name: 'code', description: 'The code to review', required: true },
+      { name: 'language', description: 'Programming language (e.g., python, javascript)', required: true }
+    ],
+    messages: [
+      {
+        role: 'system',
+        content: 'You are an expert {{language}} developer performing a thorough code review. Focus on readability, performance, security, and best practices.'
+      },
+      {
+        role: 'user',
+        content: 'Please review the following {{language}} code:\n\n```{{language}}\n{{code}}\n```'
+      }
+    ]
+  }
+];
+
 // Mock responses keyed by tool name
 const MOCK_RESPONSES = {
   get_user: (args) => ({
@@ -308,6 +374,8 @@ export const useTestStore = create((set, get) => ({
         protocolVersion: '2024-11-05',
       },
       tools: MOCK_TOOLS,
+      resources: MOCK_RESOURCES,
+      prompts: MOCK_PROMPTS,
       connectionError: null,
     });
   },

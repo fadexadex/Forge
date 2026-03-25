@@ -60,13 +60,48 @@ export function TestSidebar() {
                   <path d="M3 9h18" />
                   <path d="M9 21V9" />
                 </svg>
-                App Builder
+                MCP Apps
               </div>
             </button>
           </div>
 
           <div className="px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Primitives
+          </div>
+
+          <div className="px-2 pb-2">
+            <div className="flex gap-1 bg-neutral-100 p-1 rounded-md">
+              <button
+                onClick={() => setSelectedPrimitiveType('tools')}
+                className={`flex-1 text-xs font-medium px-2 py-1.5 rounded transition-colors ${
+                  selectedPrimitiveType === 'tools' || selectedPrimitiveType === 'chat' || selectedPrimitiveType === 'apps'
+                    ? 'bg-white text-neutral-900 shadow-sm'
+                    : 'text-muted-foreground hover:text-neutral-900'
+                }`}
+              >
+                Tools
+              </button>
+              <button
+                onClick={() => setSelectedPrimitiveType('resources')}
+                className={`flex-1 text-xs font-medium px-2 py-1.5 rounded transition-colors ${
+                  selectedPrimitiveType === 'resources'
+                    ? 'bg-white text-neutral-900 shadow-sm'
+                    : 'text-muted-foreground hover:text-neutral-900'
+                }`}
+              >
+                Resources
+              </button>
+              <button
+                onClick={() => setSelectedPrimitiveType('prompts')}
+                className={`flex-1 text-xs font-medium px-2 py-1.5 rounded transition-colors ${
+                  selectedPrimitiveType === 'prompts'
+                    ? 'bg-white text-neutral-900 shadow-sm'
+                    : 'text-muted-foreground hover:text-neutral-900'
+                }`}
+              >
+                Prompts
+              </button>
+            </div>
           </div>
 
           {renderList()}

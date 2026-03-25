@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useTestStore } from '../../stores/testStore';
 import { TestEmptyState } from './TestEmptyState';
 import { ToolHeader } from './ToolHeader';
@@ -7,7 +8,7 @@ import { HistoryPanel } from './HistoryPanel';
 import { ResourcesTestPanel } from './ResourcesTestPanel';
 import { PromptsTestPanel } from './PromptsTestPanel';
 import { ChatPanel } from './ChatPanel';
-import { AppBuilderPanel } from './AppBuilderPanel';
+import { McpAppsPanel } from './McpAppsPanel';
 import { LogBusPanel } from './LogBusPanel';
 
 // Icons
@@ -59,7 +60,7 @@ export function TestWorkbench() {
     prompts,
   } = useTestStore();
   
-  const selectedTool = getSelectedTool();
+  const [isLogsCollapsed, setIsLogsCollapsed] = useState(false);
 
   // State 1: Disconnected
   if (connectionStatus === 'disconnected') {
@@ -110,9 +111,10 @@ export function TestWorkbench() {
       return <ChatPanel />;
     }
     if (selectedPrimitiveType === 'apps') {
-      return <AppBuilderPanel />;
+      return <McpAppsPanel />;
     }
     if (selectedPrimitiveType === 'tools') {
+      const selectedTool = getSelectedTool();
       if (!selectedToolName || !selectedTool) {
         return (
           <div className="flex-1 bg-muted/30">
@@ -196,7 +198,9 @@ export function TestWorkbench() {
       </div>
       
       {/* Log Bus Side Panel - visible mainly in chat/apps mode or overall */}
-      <LogBusPanel />
+      {selectedPrimitiveType !== 'apps' && (
+        <LogBusPanel isCollapsed={isLogsCollapsed} onToggle={() => setIsLogsCollapsed(!isLogsCollapsed)} />
+      )}
     </div>
   );
 }
