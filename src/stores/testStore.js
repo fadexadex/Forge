@@ -166,7 +166,7 @@ export const useTestStore = create((set, get) => ({
 
   // Connection
   serverUrl: '',
-  transportType: 'sse',
+  transportType: 'stdio',
   connectionStatus: 'disconnected',
   connectionError: null,
   serverInfo: null,

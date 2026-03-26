@@ -1,13 +1,7 @@
 import { useTestStore } from '../../stores/testStore';
 import { useMcpStore } from '../../stores/mcpStore';
-import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { Button } from '../ui/Button';
-
-const transportOptions = [
-  { value: 'sse', label: 'SSE' },
-  { value: 'streamable-http', label: 'Streamable HTTP' },
-];
 
 export function ConnectionForm() {
   const { serverUrl, transportType, connectionStatus, connectionError, setServerUrl, setTransportType, connect, testMode, setTestMode, selectedBuilderServerId, setSelectedBuilderServerId } =
@@ -71,21 +65,38 @@ export function ConnectionForm() {
 
       {testMode === 'external' && (
         <>
-          <Input
-            label="Server URL"
-            placeholder="http://localhost:3000/mcp"
-            value={serverUrl}
-            onChange={(e) => setServerUrl(e.target.value)}
-            disabled={isConnecting}
-          />
-
-          <Select
-            label="Transport Type"
-            options={transportOptions}
-            value={transportType}
-            onChange={(e) => setTransportType(e.target.value)}
-            disabled={isConnecting}
-          />
+          <div>
+            <label className="block text-xs font-medium text-neutral-700 mb-1.5">Connection Type</label>
+            <div className="flex items-stretch rounded-lg border border-neutral-200 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-neutral-900/10 focus-within:border-neutral-400 transition-all">
+              <select
+                value={transportType}
+                onChange={(e) => setTransportType(e.target.value)}
+                disabled={isConnecting}
+                className="bg-neutral-50 border-r border-neutral-200 text-xs font-semibold text-neutral-700 px-3 py-2.5 focus:outline-none cursor-pointer appearance-none"
+                style={{
+                  paddingRight: '28px',
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23666' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 8px center',
+                }}
+              >
+                <option value="stdio">STDIO</option>
+                <option value="http">HTTP</option>
+              </select>
+              <input
+                type="text"
+                value={serverUrl}
+                onChange={(e) => setServerUrl(e.target.value)}
+                disabled={isConnecting}
+                placeholder={
+                  transportType === 'stdio'
+                    ? 'npx -y @modelcontextprotocol/server-everything'
+                    : 'http://localhost:8080/mcp'
+                }
+                className="flex-1 text-xs text-neutral-700 px-3 py-2.5 bg-transparent focus:outline-none placeholder:text-neutral-400 min-w-0"
+              />
+            </div>
+          </div>
         </>
       )}
 
