@@ -75,43 +75,10 @@ export function OutputPanel() {
 
       {/* Response body */}
       <div className="flex-1 overflow-auto scrollbar-thin p-6">
-        <div className="flex flex-col gap-6">
-          <div>
-            <ResponseViewer
-              data={lastResponse.success ? lastResponse.data : lastResponse.error}
-              isError={!lastResponse.success}
-            />
-          </div>
-
-          {lastResponse.steps && lastResponse.steps.length > 0 && (
-            <div className="border-t border-neutral-200 pt-6">
-              <h4 className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider mb-4">Execution Steps</h4>
-              <div className="space-y-4">
-                {lastResponse.steps.map((step, i) => (
-                  <div key={i} className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-                    <div className="flex justify-between items-center mb-3">
-                      <span className="text-sm font-medium text-neutral-900">{step.type}</span>
-                      <span className="text-[11px] font-mono text-neutral-400 bg-neutral-50 px-2 py-0.5 rounded">{step.nodeId}</span>
-                    </div>
-                    {step.error && (
-                      <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-700 font-medium mb-3">
-                        {step.error}
-                      </div>
-                    )}
-                    {step.output !== undefined && (
-                      <div>
-                        <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider mb-2 block">State Output</span>
-                        <pre className="bg-neutral-900 p-3 rounded-lg overflow-auto max-h-48 text-[11px] font-mono text-green-400/90 whitespace-pre-wrap leading-relaxed shadow-inner">
-                          {JSON.stringify(step.output, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        <ResponseViewer
+          data={lastResponse.success ? lastResponse.data : lastResponse.error}
+          isError={!lastResponse.success}
+        />
       </div>
     </div>
   );

@@ -22,6 +22,7 @@ import { CanvasToolbar } from './CanvasToolbar';
 import { TestWorkbench } from '../test/TestWorkbench';
 import { PromptBuilder } from '../prompts/PromptBuilder';
 import { ResourceEditor } from '../resources/ResourceEditor';
+import { WorkflowDebugPanel } from './WorkflowDebugPanel';
 
 const nodeTypes = {
   [WORKFLOW_NODE_TYPES.INPUT]: InputNode,
@@ -189,30 +190,36 @@ export function Canvas() {
   }
 
   return (
-    <div className="flex-1 relative">
-      <CanvasToolbar />
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Canvas area */}
+      <div className="flex-1 relative min-h-0">
+        <CanvasToolbar />
 
-      <ReactFlow
-        nodes={flowNodes}
-        edges={flowEdges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.3 }}
-        className="bg-white"
-        deleteKeyCode={null}
-      >
-        <Background color="#e5e5e5" gap={20} size={1} />
-        <Controls showInteractive={false} />
-        <MiniMap
-          nodeColor="#e5e5e5"
-          maskColor="rgba(255,255,255,0.8)"
-          className="!bg-muted"
-        />
-      </ReactFlow>
+        <ReactFlow
+          nodes={flowNodes}
+          edges={flowEdges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          fitView
+          fitViewOptions={{ padding: 0.3 }}
+          className="bg-white"
+          deleteKeyCode={null}
+        >
+          <Background color="#e5e5e5" gap={20} size={1} />
+          <Controls showInteractive={false} />
+          <MiniMap
+            nodeColor="#e5e5e5"
+            maskColor="rgba(255,255,255,0.8)"
+            className="!bg-muted"
+          />
+        </ReactFlow>
+      </div>
+
+      {/* Debug panel — split pane below canvas */}
+      <WorkflowDebugPanel />
     </div>
   );
 }

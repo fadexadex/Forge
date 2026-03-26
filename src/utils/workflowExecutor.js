@@ -38,6 +38,7 @@ export async function executeWorkflow(nodes, edges, inputs) {
     visited.add(currentNode.id);
 
     // Record step start
+    const stepStart = performance.now();
     const stepOutput = { nodeId: currentNode.id, type: currentNode.type, input: { ...state } };
 
     try {
@@ -139,10 +140,12 @@ export async function executeWorkflow(nodes, edges, inputs) {
       }
 
       stepOutput.output = { ...state };
+      stepOutput.durationMs = Math.round(performance.now() - stepStart);
       executionSteps.push(stepOutput);
 
     } catch (err) {
       stepOutput.error = err.message;
+      stepOutput.durationMs = Math.round(performance.now() - stepStart);
       executionSteps.push(stepOutput);
       return { success: false, error: err.message, steps: executionSteps, data: null };
     }

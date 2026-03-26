@@ -13,6 +13,7 @@ export function CanvasToolbar() {
     setNodeExecutionState,
     setNodeExecutionData,
     resetExecutionState,
+    setLastExecutionResult,
   } = useMcpStore();
   const tool = getSelectedItem();
 
@@ -26,8 +27,6 @@ export function CanvasToolbar() {
   // Execution modal state
   const [showInputModal, setShowInputModal] = useState(false);
   const [inputValues, setInputValues] = useState({});
-  const [showResults, setShowResults] = useState(false);
-  const [executionResult, setExecutionResult] = useState(null);
 
   useEffect(() => {
     if (tool) {
@@ -136,7 +135,6 @@ export function CanvasToolbar() {
     if (!tool) return;
 
     setShowInputModal(false);
-    setShowResults(false);
     startExecution();
 
     const nodes = tool.nodes || [];
@@ -172,16 +170,15 @@ export function CanvasToolbar() {
       }
 
       // Update final result
-      setExecutionResult(result);
+      setLastExecutionResult(result);
       setExecutionStatus(result.success ? 'completed' : 'failed', result.error);
-      setShowResults(true);
 
     } catch (err) {
-      setExecutionResult({ success: false, error: err.message, steps: [] });
+      const errResult = { success: false, error: err.message, steps: [] };
+      setLastExecutionResult(errResult);
       setExecutionStatus('failed', err.message);
-      setShowResults(true);
     }
-  }, [tool, startExecution, setNodeExecutionState, setNodeExecutionData, setExecutionStatus, getExecutionOrder]);
+  }, [tool, startExecution, setNodeExecutionState, setNodeExecutionData, setExecutionStatus, setLastExecutionResult, getExecutionOrder]);
 
   if (!tool) return null;
 
@@ -271,11 +268,7 @@ export function CanvasToolbar() {
 
         {hasExecutionData && !isRunning && (
           <button
-            onClick={() => {
-              resetExecutionState();
-              setShowResults(false);
-              setExecutionResult(null);
-            }}
+            onClick={() => resetExecutionState()}
             className="inline-flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium
             text-neutral-700 bg-white border border-border rounded-lg shadow-sm hover:bg-neutral-50 transition-colors"
           >
@@ -336,80 +329,6 @@ export function CanvasToolbar() {
         </div>
       )}
 
-      {/* Execution Results Panel */}
-      {showResults && executionResult && (
-        <div className="absolute bottom-20 right-4 z-10 w-96 max-h-80 bg-white border border-border rounded-lg shadow-lg overflow-hidden">
-          <div className={`px-4 py-2 flex items-center justify-between ${
-            executionResult.success ? 'bg-green-50 border-b border-green-200' : 'bg-red-50 border-b border-red-200'
-          }`}>
-            <div className="flex items-center gap-2">
-              {executionResult.success ? (
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-green-600">
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                  <polyline points="22 4 12 14.01 9 11.01" />
-                </svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-600">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="15" y1="9" x2="9" y2="15" />
-                  <line x1="9" y1="9" x2="15" y2="15" />
-                </svg>
-              )}
-              <span className={`font-medium text-sm ${executionResult.success ? 'text-green-700' : 'text-red-700'}`}>
-                {executionResult.success ? 'Execution Completed' : 'Execution Failed'}
-              </span>
-            </div>
-            <button
-              onClick={() => setShowResults(false)}
-              className="p-1 hover:bg-neutral-100 rounded"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-500">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          </div>
-
-          <div className="p-4 overflow-y-auto max-h-60 space-y-3">
-            {/* Execution Steps */}
-            {executionResult.steps && executionResult.steps.length > 0 && (
-              <div>
-                <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">Execution Steps</div>
-                <div className="space-y-1">
-                  {executionResult.steps.map((step, idx) => (
-                    <div key={idx} className="flex items-center gap-2 text-sm">
-                      {step.error ? (
-                        <span className="w-2 h-2 rounded-full bg-red-500" />
-                      ) : (
-                        <span className="w-2 h-2 rounded-full bg-green-500" />
-                      )}
-                      <span className="font-mono text-xs bg-neutral-100 px-1 rounded">{step.type}</span>
-                      {step.error && <span className="text-xs text-red-600">{step.error}</span>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Error Message */}
-            {executionResult.error && (
-              <div className="p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
-                {executionResult.error}
-              </div>
-            )}
-
-            {/* Result Data */}
-            {executionResult.success && executionResult.data && (
-              <div>
-                <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">Output Data</div>
-                <pre className="text-xs font-mono bg-neutral-900 text-green-400 p-3 rounded overflow-x-auto">
-                  {JSON.stringify(executionResult.data, null, 2)}
-                </pre>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </>
   );
 }

@@ -10,6 +10,7 @@ import { PromptsTestPanel } from './PromptsTestPanel';
 import { ChatPanel } from './ChatPanel';
 import { McpAppsPanel } from './McpAppsPanel';
 import { LogBusPanel } from './LogBusPanel';
+import { DebugPanel } from './DebugPanel';
 
 // Icons
 const ServerIcon = () => (
@@ -61,6 +62,7 @@ export function TestWorkbench() {
   } = useTestStore();
   
   const [isLogsCollapsed, setIsLogsCollapsed] = useState(false);
+  const [isDebugCollapsed, setIsDebugCollapsed] = useState(false);
 
   // State 1: Disconnected
   if (connectionStatus === 'disconnected') {
@@ -133,6 +135,7 @@ export function TestWorkbench() {
             <InputPanel tool={selectedTool} />
             <OutputPanel />
           </div>
+          <DebugPanel isCollapsed={isDebugCollapsed} onToggle={() => setIsDebugCollapsed(v => !v)} />
           <HistoryPanel />
         </div>
       );

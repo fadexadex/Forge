@@ -95,6 +95,9 @@ export const useMcpStore = create(
         error: null,
       },
 
+      // Last full execution result (steps, data, error)
+      lastExecutionResult: null,
+
       // Getters
       getSelectedServer: () => {
         const { servers, selectedServerId } = get();
@@ -855,6 +858,7 @@ export const useMcpStore = create(
             endTime: null,
             error: null,
           },
+          lastExecutionResult: null,
         });
       },
 
@@ -899,6 +903,7 @@ export const useMcpStore = create(
 
       startExecution: () => {
         set({
+          lastExecutionResult: null,
           executionState: {
             status: 'running',
             nodeStates: {},
@@ -909,6 +914,8 @@ export const useMcpStore = create(
           },
         });
       },
+
+      setLastExecutionResult: (result) => set({ lastExecutionResult: result }),
 
       // Update edges (for React Flow - only for tools)
       setEdges: (edges) => {
