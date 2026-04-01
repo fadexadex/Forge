@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { useMcpStore } from './mcpStore';
+import { McpClient } from '../utils/mcpClient';
 import { executeWorkflow } from '../utils/workflowExecutor';
 import { WORKFLOW_NODE_TYPES } from '../utils/constants';
 
@@ -165,6 +166,7 @@ export const useTestStore = create((set, get) => ({
   testMode: 'external', // 'external' | 'builder'
 
   // Connection
+  client: null,
   serverUrl: '',
   transportType: 'stdio',
   connectionStatus: 'disconnected',
@@ -363,25 +365,36 @@ export const useTestStore = create((set, get) => ({
 
     set({ connectionStatus: 'connecting', connectionError: null });
 
-    // Simulate network delay (800-1500ms)
-    await new Promise((r) => setTimeout(r, 800 + Math.random() * 700));
+    try {
+      const transportType = get().transportType === 'stdio' ? 'http' : get().transportType;
+      const client = new McpClient(serverUrl, transportType);
+      const { serverInfo, tools } = await client.connect();
 
-    set({
-      connectionStatus: 'connected',
-      serverInfo: {
-        name: serverNameFromUrl(serverUrl),
-        version: '1.4.0',
-        protocolVersion: '2024-11-05',
-      },
-      tools: MOCK_TOOLS,
-      resources: MOCK_RESOURCES,
-      prompts: MOCK_PROMPTS,
-      connectionError: null,
-    });
+      let resources = [];
+      try { resources = await client.listResources(); } catch { /* server may not support resources */ }
+
+      set({
+        client,
+        connectionStatus: 'connected',
+        serverInfo,
+        tools,
+        resources,
+        prompts: [],
+        connectionError: null,
+      });
+    } catch (err) {
+      set({
+        connectionStatus: 'disconnected',
+        connectionError: err.message,
+      });
+    }
   },
 
   disconnect: () => {
+    const { client } = get();
+    if (client) client.disconnect();
     set({
+      client: null,
       connectionStatus: 'disconnected',
       connectionError: null,
       serverInfo: null,
@@ -668,24 +681,32 @@ export const useTestStore = create((set, get) => ({
         };
       }
     } else {
-      // EXTERNAL MODE
-      const delay = 200 + Math.random() * 400;
-      await new Promise((r) => setTimeout(r, delay));
-      const responseTime = Math.round(performance.now() - startTime);
-
-      // Get mock response
-      const mockFn = MOCK_RESPONSES[selectedToolName];
-      const mockData = mockFn ? mockFn(args) : { message: 'Tool executed successfully', input: args };
-
-      // Check if mock signals an error
-      const isError = mockData?.__error === true;
-
-      response = {
-        success: !isError,
-        data: isError ? null : mockData,
-        error: isError ? mockData.message : null,
-        responseTime,
-      };
+      // EXTERNAL MODE — use real MCP client if connected
+      const { client } = get();
+      if (client) {
+        const toolResult = await client.callTool(selectedToolName, args);
+        const responseTime = Math.round(performance.now() - startTime);
+        response = {
+          success: !toolResult.isError,
+          data: toolResult.isError ? null : toolResult.content,
+          error: toolResult.isError ? (toolResult.error?.message || 'Tool execution failed') : null,
+          _meta: toolResult._meta,
+          responseTime,
+        };
+      } else {
+        const delay = 200 + Math.random() * 400;
+        await new Promise((r) => setTimeout(r, delay));
+        const responseTime = Math.round(performance.now() - startTime);
+        const mockFn = MOCK_RESPONSES[selectedToolName];
+        const mockData = mockFn ? mockFn(args) : { message: 'Tool executed successfully', input: args };
+        const isError = mockData?.__error === true;
+        response = {
+          success: !isError,
+          data: isError ? null : mockData,
+          error: isError ? mockData.message : null,
+          responseTime,
+        };
+      }
     }
 
     const historyEntry = {

@@ -3,6 +3,15 @@
 let requestId = 0;
 const nextId = () => ++requestId;
 
+// In dev, route through Vite's /mcp-proxy to avoid CORS issues with localhost servers.
+// In production builds, fetch directly (the deployed app needs proper CORS or a backend proxy).
+const proxyUrl = (url) => {
+  if (import.meta.env.DEV) {
+    return `/mcp-proxy?target=${encodeURIComponent(url)}`;
+  }
+  return url;
+};
+
 export class McpClient {
   constructor(url, transportType = 'sse') {
     this.url = url.replace(/\/$/, '');
@@ -28,7 +37,7 @@ export class McpClient {
     // Step 1: Open SSE connection to get the message endpoint
     await new Promise((resolve, reject) => {
       const sseUrl = this.url.endsWith('/sse') ? this.url : `${this.url}/sse`;
-      this.eventSource = new EventSource(sseUrl);
+      this.eventSource = new EventSource(proxyUrl(sseUrl));
 
       const timeout = setTimeout(() => {
         this.eventSource?.close();
@@ -135,6 +144,7 @@ export class McpClient {
 
       return {
         content: result.result?.content || result.result,
+        _meta: result.result?._meta,
         isError: result.result?.isError || false,
         responseTime,
       };
@@ -145,6 +155,33 @@ export class McpClient {
         isError: true,
         error: { message: err.message },
         responseTime,
+      };
+    }
+  }
+
+  async listResources() {
+    const result = this.transportType === 'sse'
+      ? await this._sendRequest('resources/list', {})
+      : await this._sendHTTPRequest('resources/list', {});
+    return result.result?.resources || [];
+  }
+
+  async readResource(uri) {
+    const startTime = performance.now();
+    try {
+      const result = this.transportType === 'sse'
+        ? await this._sendRequest('resources/read', { uri })
+        : await this._sendHTTPRequest('resources/read', { uri });
+      return {
+        contents: result.result?.contents || [],
+        responseTime: Math.round(performance.now() - startTime),
+      };
+    } catch (err) {
+      return {
+        contents: [],
+        isError: true,
+        error: { message: err.message },
+        responseTime: Math.round(performance.now() - startTime),
       };
     }
   }
@@ -173,7 +210,7 @@ export class McpClient {
         params,
       });
 
-      fetch(this.messageEndpoint, {
+      fetch(proxyUrl(this.messageEndpoint), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
@@ -193,7 +230,7 @@ export class McpClient {
       params,
     });
 
-    return fetch(this.messageEndpoint, {
+    return fetch(proxyUrl(this.messageEndpoint), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body,
@@ -211,7 +248,7 @@ export class McpClient {
       params,
     });
 
-    const response = await fetch(this.url, {
+    const response = await fetch(proxyUrl(this.url), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -238,7 +275,7 @@ export class McpClient {
       params,
     });
 
-    await fetch(this.url, {
+    await fetch(proxyUrl(this.url), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body,

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useMcpStore } from '../../stores/mcpStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 
 // Icons
 const GeneralIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>;
@@ -7,8 +8,25 @@ const KeyIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none
 
 export function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
+  const { geminiApiKey, openaiApiKey, anthropicApiKey, setGeminiApiKey, setOpenaiApiKey, setAnthropicApiKey } = useSettingsStore();
+  const [showGeminiModal, setShowGeminiModal] = useState(false);
+  const [showOpenaiModal, setShowOpenaiModal] = useState(false);
+  const [showAnthropicModal, setShowAnthropicModal] = useState(false);
+  const [keyInput, setKeyInput] = useState('');
+
+  const openModal = (setter) => {
+    setKeyInput('');
+    setter(true);
+  };
+
+  const saveKey = (setter, saveFn) => {
+    if (keyInput.trim()) saveFn(keyInput.trim());
+    setter(false);
+    setKeyInput('');
+  };
 
   return (
+    <>
     <div className="flex-1 flex bg-white overflow-hidden">
       <div className="w-64 border-r border-border bg-neutral-50/50 p-4 flex flex-col">
         <h2 className="text-xl font-semibold text-neutral-900 mb-6 px-2">Settings</h2>
@@ -101,22 +119,67 @@ export function SettingsPage() {
                       </button>
                     </div>
                     <div className="divide-y divide-border">
+                      {/* Google Gemini */}
+                      <div className="p-6 flex items-center justify-between hover:bg-neutral-50/50 transition-colors">
+                        <div>
+                          <div className="text-sm font-medium text-neutral-900 mb-1">Google Gemini API Key</div>
+                          <div className="text-xs text-neutral-500 font-mono">
+                            {geminiApiKey ? `${geminiApiKey.slice(0, 10)}••••••••••••` : <span className="italic text-neutral-400">Not configured</span>}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {geminiApiKey && <span className="px-2.5 py-1 rounded-full bg-green-100 text-green-700 text-xs font-medium border border-green-200">Active</span>}
+                          <button onClick={() => openModal(setShowGeminiModal)} className="px-4 py-2 bg-white hover:bg-neutral-50 text-neutral-900 text-sm font-medium rounded-xl transition-colors border border-border shadow-sm">
+                            {geminiApiKey ? 'Update' : 'Configure'}
+                          </button>
+                          {geminiApiKey && (
+                            <button onClick={() => setGeminiApiKey('')} className="p-2 text-neutral-400 hover:bg-red-50 hover:text-red-500 rounded-lg transition-colors">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* OpenAI */}
                       <div className="p-6 flex items-center justify-between hover:bg-neutral-50/50 transition-colors">
                         <div>
                           <div className="text-sm font-medium text-neutral-900 mb-1">OpenAI API Key</div>
-                          <div className="text-xs text-neutral-500 font-mono">sk-proj-••••••••••••••••••••••••••••••••••••</div>
+                          <div className="text-xs text-neutral-500 font-mono">
+                            {openaiApiKey ? `${openaiApiKey.slice(0, 10)}••••••••••••` : <span className="italic text-neutral-400">Not configured</span>}
+                          </div>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className="px-2.5 py-1 rounded-full bg-green-100 text-green-700 text-xs font-medium border border-green-200">Active</span>
-                          <button className="p-2 text-neutral-400 hover:bg-red-50 hover:text-red-500 rounded-lg transition-colors"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg></button>
+                          {openaiApiKey && <span className="px-2.5 py-1 rounded-full bg-green-100 text-green-700 text-xs font-medium border border-green-200">Active</span>}
+                          <button onClick={() => openModal(setShowOpenaiModal)} className="px-4 py-2 bg-white hover:bg-neutral-50 text-neutral-900 text-sm font-medium rounded-xl transition-colors border border-border shadow-sm">
+                            {openaiApiKey ? 'Update' : 'Configure'}
+                          </button>
+                          {openaiApiKey && (
+                            <button onClick={() => setOpenaiApiKey('')} className="p-2 text-neutral-400 hover:bg-red-50 hover:text-red-500 rounded-lg transition-colors">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                            </button>
+                          )}
                         </div>
                       </div>
+
+                      {/* Anthropic */}
                       <div className="p-6 flex items-center justify-between hover:bg-neutral-50/50 transition-colors">
                         <div>
                           <div className="text-sm font-medium text-neutral-900 mb-1">Anthropic API Key</div>
-                          <div className="text-xs text-neutral-400 italic">Not configured</div>
+                          <div className="text-xs text-neutral-500 font-mono">
+                            {anthropicApiKey ? `${anthropicApiKey.slice(0, 10)}••••••••••••` : <span className="italic text-neutral-400">Not configured</span>}
+                          </div>
                         </div>
-                        <button className="px-4 py-2 bg-white hover:bg-neutral-50 text-neutral-900 text-sm font-medium rounded-xl transition-colors border border-border shadow-sm">Configure</button>
+                        <div className="flex items-center gap-3">
+                          {anthropicApiKey && <span className="px-2.5 py-1 rounded-full bg-green-100 text-green-700 text-xs font-medium border border-green-200">Active</span>}
+                          <button onClick={() => openModal(setShowAnthropicModal)} className="px-4 py-2 bg-white hover:bg-neutral-50 text-neutral-900 text-sm font-medium rounded-xl transition-colors border border-border shadow-sm">
+                            {anthropicApiKey ? 'Update' : 'Configure'}
+                          </button>
+                          {anthropicApiKey && (
+                            <button onClick={() => setAnthropicApiKey('')} className="p-2 text-neutral-400 hover:bg-red-50 hover:text-red-500 rounded-lg transition-colors">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -132,5 +195,36 @@ export function SettingsPage() {
         </div>
       </div>
     </div>
+
+    {/* API Key Modals */}
+
+    {[
+      { show: showGeminiModal, setShow: setShowGeminiModal, label: 'Google Gemini API Key', saveFn: setGeminiApiKey },
+      { show: showOpenaiModal, setShow: setShowOpenaiModal, label: 'OpenAI API Key', saveFn: setOpenaiApiKey },
+      { show: showAnthropicModal, setShow: setShowAnthropicModal, label: 'Anthropic API Key', saveFn: setAnthropicApiKey },
+    ].map(({ show, setShow, label, saveFn }) =>
+      show ? (
+        <div key={label} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShow(false)}>
+          <div className="bg-white rounded-2xl shadow-xl border border-border w-full max-w-md mx-4 p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-semibold text-neutral-900 mb-1">{label}</h3>
+            <p className="text-sm text-neutral-500 mb-4">Your key is stored locally and never sent to our servers.</p>
+            <input
+              type="password"
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && saveKey(setShow, saveFn)}
+              placeholder="Paste your API key here..."
+              autoFocus
+              className="w-full border border-border rounded-lg px-4 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-neutral-900/20 mb-4"
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShow(false)} className="px-4 py-2 text-sm font-medium text-neutral-600 hover:text-neutral-900 transition-colors">Cancel</button>
+              <button onClick={() => saveKey(setShow, saveFn)} className="px-5 py-2 bg-neutral-900 text-white text-sm font-medium rounded-xl hover:bg-neutral-800 transition-colors shadow-sm">Save</button>
+            </div>
+          </div>
+        </div>
+      ) : null
+    )}
+    </>
   );
 }

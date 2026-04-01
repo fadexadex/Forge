@@ -1,0 +1,31 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - button "Forge" [ref=e6]
+      - generic [ref=e42]: /
+      - generic [ref=e43]: Test Mode
+    - button "Settings" [ref=e8]:
+      - img [ref=e9]
+  - generic [ref=e12]:
+    - complementary [ref=e13]:
+      - generic [ref=e14]:
+        - button "Collapse Sidebar" [ref=e15]:
+          - img [ref=e16]
+        - button "Create" [ref=e19]
+        - button "Test" [active] [ref=e20]
+      - generic [ref=e45]:
+        - generic [ref=e46]:
+          - button "Builder Preview" [ref=e47]
+          - button "External Server" [ref=e48]
+        - generic [ref=e49]:
+          - generic [ref=e50]: Connection Type
+          - generic [ref=e51]:
+            - combobox [ref=e52] [cursor=pointer]:
+              - option "STDIO" [selected]
+              - option "HTTP"
+            - textbox "npx -y @modelcontextprotocol/server-everything" [ref=e53]
+        - button "Connect" [disabled] [ref=e54]
+    - generic [ref=e57]:
+      - img [ref=e60]
+      - heading "Connect to an MCP Server" [level=3] [ref=e63]
+      - paragraph [ref=e64]: Enter a server URL in the sidebar to discover and test available tools.
