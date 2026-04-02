@@ -636,8 +636,11 @@ export const useTestStore = create((set, get) => ({
       if (tool?.inputSchema?.properties) {
         Object.entries(tool.inputSchema.properties).forEach(([key, schema]) => {
           const val = args[key];
-          if ((schema.type === 'array' || schema.type === 'object') && typeof val === 'string' && val.trim()) {
-            try { args[key] = JSON.parse(val); } catch { /* leave as string */ }
+          if (typeof val === 'string' && val.trim()) {
+            const trimmed = val.trim();
+            if (schema.type === 'array' || schema.type === 'object' || trimmed.startsWith('{') || trimmed.startsWith('[')) {
+              try { args[key] = JSON.parse(val); } catch { /* leave as string */ }
+            }
           }
         });
       }
@@ -684,15 +687,34 @@ export const useTestStore = create((set, get) => ({
       // EXTERNAL MODE — use real MCP client if connected
       const { client } = get();
       if (client) {
-        const toolResult = await client.callTool(selectedToolName, args);
-        const responseTime = Math.round(performance.now() - startTime);
-        response = {
-          success: !toolResult.isError,
-          data: toolResult.isError ? null : toolResult.content,
-          error: toolResult.isError ? (toolResult.error?.message || 'Tool execution failed') : null,
-          _meta: toolResult._meta,
-          responseTime,
-        };
+        try {
+          const toolResult = await client.callTool(selectedToolName, args);
+          const responseTime = Math.round(performance.now() - startTime);
+          
+          let errorMessage = toolResult.error?.message || 'Tool execution failed';
+          if (toolResult.isError && toolResult.content && Array.isArray(toolResult.content)) {
+            const textContent = toolResult.content.find(c => c.type === 'text')?.text;
+            if (textContent) {
+              errorMessage = textContent;
+            }
+          }
+
+          response = {
+            success: !toolResult.isError,
+            data: toolResult.isError ? null : toolResult,
+            error: toolResult.isError ? errorMessage : null,
+            _meta: toolResult._meta,
+            responseTime,
+          };
+        } catch (err) {
+          const responseTime = Math.round(performance.now() - startTime);
+          response = {
+            success: false,
+            data: null,
+            error: err.message || 'Tool execution failed',
+            responseTime,
+          };
+        }
       } else {
         const delay = 200 + Math.random() * 400;
         await new Promise((r) => setTimeout(r, delay));
