@@ -4,8 +4,13 @@ import remarkGfm from 'remark-gfm';
 import { useTestStore } from '../../stores/testStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { sendChatMessage } from '../../utils/aiChatService';
+import { classifyToolOutcome, getToolErrorMessage } from '../../utils/toolOutcome';
+import { useBridgeMessages } from './mcp-apps/useBridgeMessages.js';
+import { ChatWidget } from './mcp-apps/ChatWidget.jsx';
+import { createRuntimeId, useWidgetSessions } from './mcp-apps/useWidgetSessions.js';
 
-// Icons
+// ─── Icons ───────────────────────────────────────────────────────────────────
+
 const TrashIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
@@ -16,12 +21,6 @@ const SparklesIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1-1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
     <path d="M5 3v4" /><path d="M19 17v4" /><path d="M3 5h4" /><path d="M17 19h4" />
-  </svg>
-);
-
-const PlayIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polygon points="5 3 19 12 5 21 5 3"></polygon>
   </svg>
 );
 
@@ -55,352 +54,7 @@ const KeyIcon = () => (
   </svg>
 );
 
-const JsonView = ({ data }) => {
-  if (data === null) return <span className="text-orange-500">null</span>;
-  if (typeof data === 'boolean') return <span className="text-orange-500">{data ? 'true' : 'false'}</span>;
-  if (typeof data === 'number') return <span className="text-purple-600">{data}</span>;
-  if (typeof data === 'string') return <span className="text-green-700">"{data}"</span>;
-
-  if (Array.isArray(data)) {
-    if (data.length === 0) return <span className="text-neutral-500">[]</span>;
-    return (
-      <div className="inline-block">
-        <span className="text-neutral-500">[</span>
-        <div className="pl-4 border-l border-neutral-200/50">
-          {data.map((val, i) => (
-            <div key={i}>
-              <JsonView data={val} />
-              {i < data.length - 1 && <span className="text-neutral-500">,</span>}
-            </div>
-          ))}
-        </div>
-        <span className="text-neutral-500">]</span>
-      </div>
-    );
-  }
-
-  if (typeof data === 'object') {
-    const keys = Object.keys(data);
-    if (keys.length === 0) return <span className="text-neutral-500">{"{}"}</span>;
-    return (
-      <div className="inline-block">
-        <span className="text-neutral-500">{"{"}</span>
-        <div className="pl-4 border-l border-neutral-200/50">
-          {keys.map((key, i) => (
-            <div key={key}>
-              <span className="text-blue-600">"{key}"</span>
-              <span className="text-neutral-500">: </span>
-              <JsonView data={data[key]} />
-              {i < keys.length - 1 && <span className="text-neutral-500">,</span>}
-            </div>
-          ))}
-        </div>
-        <span className="text-neutral-500">{"}"}</span>
-      </div>
-    );
-  }
-
-  return <span>{String(data)}</span>;
-};
-
-function downloadFile(data, filename, mimeType) {
-  const blob = new Blob([data], { type: mimeType || 'application/octet-stream' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename || 'download';
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-
-function serializeForInlineScript(value) {
-  return JSON.stringify(value ?? null)
-    .replace(/</g, "\\u003C")
-    .replace(/>/g, "\\u003E")
-    .replace(/&/g, "\\u0026")
-    .replace(/\u2028/g, "\\u2028")
-    .replace(/\u2029/g, "\\u2029");
-}
-
-function ChatWidget({ widget, registerWidget, unregisterWidget }) {
-  const [activeTab, setActiveTab] = useState(null); // null | 'data' | 'context'
-  const [modelContext, setModelContext] = useState(null);
-  const iframeRef = useRef(null);
-
-  useEffect(() => {
-    if (registerWidget && widget.id) {
-      registerWidget(widget.id, {
-        checkSource: (source) => iframeRef.current && source === iframeRef.current.contentWindow,
-        setContext: (newContext) => {
-          setModelContext(newContext);
-          setActiveTab('context');
-        },
-        getContext: () => widget.context
-      });
-    }
-    return () => {
-      if (unregisterWidget && widget.id) {
-        unregisterWidget(widget.id);
-      }
-    };
-  }, [widget.id, registerWidget, unregisterWidget]);
-
-  // Auto-resize iframe to match its content height
-  useEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe || activeTab) return;
-    let observer = null;
-
-    const fitHeight = () => {
-      try {
-        const root = iframe.contentDocument?.documentElement;
-        if (root) {
-          let targetHeight = root.scrollHeight;
-
-          // Determine the width given to the iframe
-          const width = iframe.offsetWidth;
-
-          // Detect apps that render visualizations/PDFs which commonly use 100vh flex grids.
-          // These collapse to the iframe's default minimum height (~150px) because they fill available space.
-          // Since we know the width we gave it, we can dynamically render a proportional height!
-          const hasCharts = iframe.contentDocument.querySelector('canvas, svg');
-          const isPdfViewer = iframe.contentDocument.querySelector('#viewer, #canvasContainer');
-
-          if (isPdfViewer) {
-            // PDF documents usually look best with a 1:1.4 aspect ratio (A4 proportions)
-            targetHeight = Math.max(targetHeight, width * 1.3);
-          } else if (hasCharts) {
-            // Data visualizations need enough vertical room for stacked chart grids
-            targetHeight = Math.max(targetHeight, width * 1.1);
-          }
-
-          if (targetHeight > 0) {
-            // Add a small buffer to prevent scrollbars jumping on zoom/resize
-            iframe.style.height = (targetHeight + 10) + 'px';
-          }
-        }
-      } catch { /* cross-origin guard */ }
-    };
-
-    let mutObserver = null;
-    const onLoad = () => {
-      fitHeight();
-      try {
-        observer = new ResizeObserver(fitHeight);
-        observer.observe(iframe.contentDocument.documentElement);
-
-        // Re-check after async chart renders (e.g. Chart.js draws after load)
-        setTimeout(fitHeight, 300);
-        setTimeout(fitHeight, 800);
-
-        // Watch for canvas/svg DOM additions that signal chart completion
-        mutObserver = new MutationObserver(fitHeight);
-        mutObserver.observe(iframe.contentDocument.body, { childList: true, subtree: true });
-      } catch { }
-    };
-
-    iframe.addEventListener('load', onLoad);
-    return () => {
-      iframe.removeEventListener('load', onLoad);
-      observer?.disconnect();
-      mutObserver?.disconnect();
-    };
-  }, [activeTab]);
-
-  // Strict CSP enforcing the Security Contract
-  const cspObj = widget.context?.resourceMeta?.ui?.csp;
-  let cspString = '';
-
-  if (cspObj) {
-    const connectDomains = (cspObj.connectDomains || []).filter(Boolean);
-    const resourceDomains = (cspObj.resourceDomains || []).filter(Boolean);
-    const frameDomains = (cspObj.frameDomains || []).filter(Boolean);
-    const baseUriDomains = (cspObj.baseUriDomains || []).filter(Boolean);
-
-    const allConnect = Array.from(new Set([...connectDomains, ...resourceDomains]));
-    const connectSrc = allConnect.length > 0 ? allConnect.join(" ") : "'none'";
-    const resourceSrc = resourceDomains.length > 0 ? ["data:", "blob:", ...resourceDomains].join(" ") : "data: blob:";
-    const frameSrc = frameDomains.length > 0 ? frameDomains.join(" ") : "'none'";
-    const baseUri = baseUriDomains.length > 0 ? baseUriDomains.join(" ") : "'none'";
-
-    cspString = [
-      "default-src 'none'",
-      "script-src 'unsafe-inline' " + resourceSrc,
-      "style-src 'unsafe-inline' " + resourceSrc,
-      "img-src " + resourceSrc,
-      "font-src " + resourceSrc,
-      "media-src " + resourceSrc,
-      "connect-src " + connectSrc,
-      "frame-src " + frameSrc,
-      "object-src 'none'",
-      "base-uri " + baseUri,
-    ].join("; ");
-  } else {
-    // Default strict CSP if none provided
-    cspString = [
-      "default-src 'none'",
-      "script-src 'unsafe-inline'",
-      "style-src 'unsafe-inline'",
-      "img-src data: blob:",
-      "font-src data: blob:",
-      "media-src data: blob:",
-      "connect-src 'none'",
-      "frame-src 'none'",
-      "object-src 'none'",
-      "base-uri 'none'",
-    ].join("; ");
-  }
-
-  const cspMetaTag = `<meta http-equiv="Content-Security-Policy" content="${cspString}">`;
-
-  const configData = {
-    toolInput: widget.context?.toolInput || {},
-    toolOutput: widget.context?.toolOutput || null,
-    theme: 'light',
-    displayMode: 'inline',
-    viewMode: 'inline',
-    viewParams: {}
-  };
-
-  const contextScript = `<script type="application/json" id="openai-compat-config">${serializeForInlineScript(configData)}</script>`;
-
-  const openaiCompatScript = `<script>
-(function() {
-  if (!window.openai) {
-    const configEl = document.getElementById('openai-compat-config');
-    let config = {};
-    if (configEl) {
-      try { config = JSON.parse(configEl.textContent); } catch (e) {}
-    }
-    
-    window.openai = {
-      toolInput: config.toolInput || {},
-      toolOutput: config.toolOutput || null,
-      theme: config.theme || 'light',
-      displayMode: config.displayMode || 'inline',
-      viewMode: config.viewMode || 'inline',
-      viewParams: config.viewParams || {},
-      widgetState: null,
-      callTool: (name, args) => {
-        let callId = 1; // dummy id for compat wrapper
-        return new Promise((resolve, reject) => {
-          const handleMessage = (e) => {
-            const msg = e.data;
-            if (msg.jsonrpc === '2.0' && msg.id === callId) {
-              window.removeEventListener('message', handleMessage);
-              if (msg.error) reject(msg.error);
-              else resolve(msg.result);
-            }
-          };
-          window.addEventListener('message', handleMessage);
-          window.parent.postMessage({ jsonrpc: '2.0', id: callId, method: 'tools/call', params: { name, arguments: args || {} } }, '*');
-        });
-      },
-      structuredContent: (content) => {
-        window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/update-model-context', params: { structuredContent: content } }, '*');
-      },
-      sendFollowUpMessage: (text) => {
-        window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/send-follow-up', params: { text } }, '*');
-      }
-    };
-
-    // Forward tool-input dynamically to window.openai as well, in case apps depend on it updating
-    const originalPostMessage = window.postMessage;
-    window.addEventListener('message', (e) => {
-      if (e.data && e.data.method === 'ui/notifications/tool-input') {
-        const sc = e.data.params?.structuredContent || e.data.params?.arguments;
-        window.openai.toolOutput = sc;
-        // Optionally update other fields if needed
-      }
-    });
-  }
-})();
-</script>`;
-
-
-  return (
-    <div className="w-full mt-3 flex flex-col">
-      <div className="bg-white rounded-xl border border-neutral-200/80 shadow-[0_2px_10px_rgba(0,0,0,0.02)] overflow-hidden w-full">
-        <div className="h-10 px-4 bg-neutral-50/80 border-b border-neutral-200/80 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-neutral-400">
-              <polygon points="12 2 2 7 12 12 22 7 12 2" />
-              <polyline points="2 17 12 22 22 17" />
-              <polyline points="2 12 17 22 22 17" />
-            </svg>
-            <span className="text-[12px] font-mono text-neutral-600 font-medium">{widget.toolName}</span>
-          </div>
-          <div className="flex items-center gap-2 text-[11px] font-medium font-mono text-neutral-500">
-            <button
-              onClick={() => setActiveTab(activeTab === 'data' ? null : 'data')}
-              className={`px-2 py-1 rounded transition-colors ${activeTab === 'data' ? 'bg-neutral-200 text-neutral-800' : 'hover:bg-neutral-200/60'}`}
-            >
-              Data
-            </button>
-            <button
-              onClick={() => setActiveTab(activeTab === 'context' ? null : 'context')}
-              className={`px-2 py-1 rounded transition-colors flex items-center gap-1 ${activeTab === 'context' ? 'bg-neutral-200 text-neutral-800' : 'hover:bg-neutral-200/60'}`}
-            >
-              <div className={`w-1.5 h-1.5 rounded-full ${modelContext ? 'bg-blue-500' : 'bg-neutral-300'}`} />
-              Context
-            </button>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-green-500 ml-1">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          </div>
-        </div>
-
-        {activeTab === 'data' && (
-          <div className="p-4 bg-neutral-50 border-b border-neutral-200/80 overflow-x-auto max-h-[400px] overflow-y-auto text-[12px] font-mono leading-loose">
-            <div className="mb-4">
-              <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2">Input</div>
-              <JsonView data={widget.context?.toolInput || {}} />
-            </div>
-            <div>
-              <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2">Result</div>
-              <JsonView data={widget.context?.toolOutput?.structuredContent || widget.context?.toolOutput || {}} />
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'context' && (
-          <div className="p-4 bg-neutral-50 border-b border-neutral-200/80 overflow-x-auto max-h-[400px] overflow-y-auto text-[12px] font-mono leading-loose">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Model Context</div>
-              {modelContext && <div className="text-[10px] text-neutral-400">Updated: {new Date().toLocaleTimeString()}</div>}
-            </div>
-            <div className="mb-4">
-              {modelContext ? <JsonView data={modelContext} /> : <span className="text-neutral-400 italic">No context has been sent back to the model yet.</span>}
-            </div>
-            <div className="text-[11px] text-neutral-500 font-sans bg-white p-2 rounded border border-neutral-200">
-              This context will be included in future turns with the model.
-            </div>
-          </div>
-        )}
-
-        <div className={activeTab ? 'hidden' : 'block'}>
-          <iframe
-            ref={iframeRef}
-            srcDoc={(() => {
-              const headContent = cspMetaTag + contextScript + openaiCompatScript;
-              let html = widget.html;
-              if (/<head[^>]*>/i.test(html)) {
-                return html.replace(/<head[^>]*>/i, match => match + headContent);
-              }
-              if (/<html[^>]*>/i.test(html)) {
-                return html.replace(/<html[^>]*>/i, match => match + '<head>' + headContent + '</head>');
-              }
-              return `<!DOCTYPE html><html><head>${headContent}<meta charset="UTF-8"></head><body>${html}</body></html>`;
-            })()}
-            sandbox="allow-scripts allow-forms allow-popups allow-downloads allow-modals allow-same-origin"
-            className="w-full border-0 bg-white"
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
+// ─── Main Panel ───────────────────────────────────────────────────────────────
 
 export function McpAppsPanel() {
   const { tools, serverInfo, client } = useTestStore();
@@ -417,8 +71,24 @@ export function McpAppsPanel() {
 
   const scrollRef = useRef(null);
   const messagesRef = useRef([]);
-  const runAIRef = useRef(null);
   const widgetRegistry = useRef(new Map());
+  const toolTraceRef = useRef(new Map());
+  const resourceCacheRef = useRef(new Map());
+  const resourcePromiseRef = useRef(new Map());
+
+  const {
+    sessionsById,
+    getWidgetSession,
+    createWidgetSession,
+    updateWidgetSession,
+    setWidgetStatus,
+    setWidgetModelContext,
+    addWidgetWarning,
+    appendWidgetEvent,
+    startProxyToolCall,
+    finishProxyToolCall,
+    resetWidgetSessions,
+  } = useWidgetSessions();
 
   // Keep messagesRef in sync so stale closures can read latest messages
   useEffect(() => { messagesRef.current = messages; }, [messages]);
@@ -432,11 +102,11 @@ export function McpAppsPanel() {
   const addLog = ({ dir, type, source = 'mcp-server' }) => {
     setLogs((prev) => [
       ...prev,
-      { id: Date.now() + Math.random(), dir, type, source, time: new Date().toLocaleTimeString() },
+      { id: createRuntimeId('log'), dir, type, source, time: new Date().toLocaleTimeString() },
     ]);
   };
 
-  // Auto-scroll: to the start of the latest message when it has widgets (so text is visible),
+  // Auto-scroll: to the start of the latest message when it has widgets,
   // otherwise to the bottom.
   useEffect(() => {
     const lastMsg = messages[messages.length - 1];
@@ -449,124 +119,98 @@ export function McpAppsPanel() {
     }
   }, [messages]);
 
-  // PostMessage bridge for iframe widgets
-  useEffect(() => {
-    const handleMessage = async (event) => {
-      const { jsonrpc, id, method, params } = event.data || {};
-      if (jsonrpc !== '2.0') return;
+  // Append a hidden system context message to the conversation
+  const appendContextMessage = (modelContext, widgetId = null) => {
+    const modelVisibleContext =
+      modelContext?.structuredContent ??
+      modelContext?.content ??
+      modelContext;
 
-      addLog({ dir: '<-', type: `bridge: ${method}`, source: 'mcp-apps-bridge' });
-
-      // Determine which widget sent this message by matching event.source
-      let __widgetId = null;
-      for (const [wId, fns] of widgetRegistry.current.entries()) {
-        if (fns.checkSource(event.source)) {
-          __widgetId = wId;
-          break;
-        }
-      }
-
-      if (!__widgetId) {
-        console.warn('CRITICAL: __widgetId is null for method', method, 'Registry size:', widgetRegistry.current.size);
-      }
-
-      console.log('bridge received:', method, { __widgetId, params });
-
-      try {
-        let result;
-
-        if (method === 'tools/call') {
-          const toolResult = await client.callTool(params.name, params.arguments);
-          result = toolResult;
-          addLog({ dir: '->', type: `bridge result: ${params.name}`, source: 'mcp-apps-bridge' });
-        } else if (method === 'resources/read') {
-          result = await client.readResource(params.uri);
-        } else if (method === 'ui/update-model-context') {
-          const structuredContent = params.structuredContent || params;
-          if (__widgetId) {
-            widgetRegistry.current.get(__widgetId)?.setContext(structuredContent);
-          }
-          const contextMsg = {
-            id: Date.now() + Math.random(),
-            role: 'user',
-            isHidden: true,
-            content: `[System Note: The user interacted with the UI and provided the following context]\n${JSON.stringify(structuredContent, null, 2)}`
-          };
-          setMessages((prev) => [...prev, contextMsg]);
-          result = { success: true };
-        } else if (method === 'ui/download-file') {
-          downloadFile(params.data, params.filename, params.mimeType);
-          result = { success: true };
-        } else if (method === 'ui/initialize') {
-          const hostContext = __widgetId ? widgetRegistry.current.get(__widgetId)?.getContext() : {};
-          result = {
-            protocolVersion: '2024-11-05',
-            hostInfo: { name: 'Forge', version: '1.0.0' },
-            hostCapabilities: {},
-            hostContext: hostContext
-          };
-        } else if (method === 'ui/notifications/initialized') {
-          const source = event.source;
-          const deliverToolInput = (attempts = 0) => {
-            let wId = null;
-            for (const [id, fns] of widgetRegistry.current.entries()) {
-              if (fns.checkSource(source)) { wId = id; break; }
-            }
-            if (wId) {
-              const context = widgetRegistry.current.get(wId)?.getContext();
-              console.log('Got initialized, found widget:', wId, context);
-              if (context) {
-                const payload = {
-                  jsonrpc: '2.0',
-                  method: 'ui/notifications/tool-input',
-                  params: {
-                    arguments: context.toolInput,
-                    structuredContent: context.toolOutput?.structuredContent || context.toolOutput,
-                  }
-                };
-                console.log('Sending tool-input payload:', payload);
-                source.postMessage(payload, '*');
-              }
-            } else if (attempts < 20) {
-              console.log('Widget not yet registered, retrying...', attempts);
-              setTimeout(() => deliverToolInput(attempts + 1), 50);
-            } else {
-              console.warn('Failed to find widget for initialized event after 20 attempts');
-            }
-          };
-          deliverToolInput();
-          return;
-        } else if (method.startsWith('ui/notifications/')) {
-          return; // Notifications don't need a response
-        }
-
-        if (id !== undefined) {
-          event.source.postMessage({ jsonrpc: '2.0', id, result }, '*');
-        }
-      } catch (err) {
-        if (id !== undefined) {
-          event.source.postMessage(
-            { jsonrpc: '2.0', id, error: { code: -32603, message: err.message } },
-            '*'
-          );
-        }
-      }
+    const contextMsg = {
+      id: createRuntimeId('ctx'),
+      role: 'user',
+      isHidden: true,
+      content: `[System Note: The MCP app updated its model context${widgetId ? ` (widget ${widgetId})` : ''}]\n${JSON.stringify(modelVisibleContext, null, 2)}`,
     };
-
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [client, serverInfo]);
-
-  const fetchWidgetResource = async (resourceUri) => {
-    if (!client) return null;
-    const result = await client.readResource(resourceUri);
-    return result.contents?.[0] || null;
+    setMessages((prev) => [...prev, contextMsg]);
   };
 
-  // Core AI streaming runner — called from both the chat form and the postMessage bridge
+  // Fetch the HTML resource for a widget from MCP
+  const fetchWidgetResource = async (resourceUri, { preload = false } = {}) => {
+    if (!client) return null;
+
+    if (resourceCacheRef.current.has(resourceUri)) {
+      return resourceCacheRef.current.get(resourceUri);
+    }
+
+    if (resourcePromiseRef.current.has(resourceUri)) {
+      return resourcePromiseRef.current.get(resourceUri);
+    }
+
+    addLog({
+      dir: '->',
+      type: `${preload ? 'resources/preload' : 'resources/read'}: ${resourceUri}`,
+      source: 'mcp-apps-host',
+    });
+
+    const promise = client.readResource(resourceUri)
+      .then((result) => {
+        const resource = result.contents?.[0] || null;
+        if (resource) {
+          resourceCacheRef.current.set(resourceUri, resource);
+        }
+        addLog({
+          dir: '<-',
+          type: `resources/result: ${resourceUri}`,
+          source: 'mcp-apps-host',
+        });
+        return resource;
+      })
+      .finally(() => {
+        resourcePromiseRef.current.delete(resourceUri);
+      });
+
+    resourcePromiseRef.current.set(resourceUri, promise);
+    return promise;
+  };
+
+  useEffect(() => {
+    if (!client || !(tools || []).length) return;
+
+    const uris = Array.from(new Set(
+      tools
+        .map((tool) => tool?._meta?.ui?.resourceUri)
+        .filter(Boolean)
+    ));
+
+    uris.forEach((resourceUri) => {
+      fetchWidgetResource(resourceUri, { preload: true }).catch(() => {
+        // Preload failures are surfaced later when the tool is actually invoked.
+      });
+    });
+  }, [client, tools]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // PostMessage bridge — handles all iframe↔host communication
+  useBridgeMessages({
+    client,
+    serverInfo,
+    widgetRegistry,
+    addLog,
+    getWidgetSession,
+    setWidgetStatus,
+    setWidgetModelContext,
+    updateWidgetSession,
+    appendWidgetEvent,
+    startProxyToolCall,
+    finishProxyToolCall,
+    addWidgetWarning,
+    onContextUpdate: appendContextMessage,
+  });
+
+  // Core AI streaming runner
   const runAI = async (messagesToSend) => {
     if (!client || !geminiApiKey) return;
-    const assistantMsgId = Date.now() + Math.random() + 1;
+    const assistantMsgId = createRuntimeId('assistant');
     setMessages((prev) => [
       ...prev,
       { id: assistantMsgId, role: 'assistant', content: '', toolCalls: [], widgets: [] },
@@ -586,6 +230,13 @@ export function McpAppsPanel() {
           }
         },
         onToolCall: (name, args, callId) => {
+          toolTraceRef.current.set(callId, {
+            traceId: createRuntimeId('trace'),
+            startedAt: new Date().toISOString(),
+            source: 'model',
+            toolName: name,
+            args,
+          });
           addLog({ dir: '->', type: `tools/call: ${name}` });
           setMessages((prev) =>
             prev.map((m) =>
@@ -593,50 +244,139 @@ export function McpAppsPanel() {
                 ...m,
                 toolCalls: m.toolCalls.some(tc => tc.callId === callId)
                   ? m.toolCalls
-                  : [...m.toolCalls, { toolName: name, args, callId, status: 'running' }]
+                  : [...m.toolCalls, { toolName: name, args, callId, status: 'running' }],
               } : m
             )
           );
         },
         onToolResult: async (name, args, toolResult, callId) => {
-          addLog({ dir: '<-', type: `tools/result: ${name}` });
+          const outcome = classifyToolOutcome(toolResult);
+          const toolTrace = toolTraceRef.current.get(callId) || {
+            traceId: createRuntimeId('trace'),
+            startedAt: new Date().toISOString(),
+            source: 'model',
+            toolName: name,
+            args,
+          };
+          const outcomeMessage = outcome.ok ? null : getToolErrorMessage(toolResult);
+          addLog({
+            dir: '<-',
+            type: outcome.ok
+              ? `tools/result: ${name}`
+              : `tools/error: ${name}${outcomeMessage ? ` (${outcomeMessage})` : ''}`,
+          });
 
+          // Mark tool call completion status
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantMsgId ? {
                 ...m,
                 toolCalls: m.toolCalls.map(tc =>
-                  tc.callId === callId ? { ...tc, status: 'completed', result: toolResult } : tc
-                )
+                  tc.callId === callId
+                    ? { ...tc, status: outcome.ok ? 'completed' : 'failed', result: toolResult }
+                    : tc
+                ),
               } : m
             )
           );
 
+          if (!outcome.ok) {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantMsgId
+                  ? {
+                    ...m,
+                    content: m.content
+                      ? `${m.content}\n\nTool error (${name}): ${outcomeMessage}`
+                      : `Tool error (${name}): ${outcomeMessage}`,
+                  }
+                  : m
+              )
+            );
+            toolTraceRef.current.delete(callId);
+            return;
+          }
+
+          // Check if this tool result includes a UI resource to render
           const toolDef = tools.find((t) => t.name === name);
           const meta = toolResult._meta || toolDef?._meta;
           if (meta?.ui?.resourceUri) {
-            const resource = await fetchWidgetResource(meta.ui.resourceUri);
-            if (resource?.text) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMsgId
-                    ? {
-                      ...m,
-                      widgets: [
-                        ...m.widgets,
-                        {
-                          id: Date.now() + Math.random(),
-                          toolName: name,
-                          html: resource.text,
-                          context: { toolInput: args, toolOutput: toolResult, resourceMeta: resource._meta },
-                        },
-                      ],
-                    }
-                    : m
-                )
-              );
+            const widgetId = createWidgetSession({
+              traceId: toolTrace.traceId,
+              toolName: name,
+              resourceUri: meta.ui.resourceUri,
+              invocationArgs: args,
+              toolResult,
+              source: 'model',
+              status: 'resource_loading',
+            });
+
+            appendWidgetEvent(widgetId, {
+              kind: 'tool-origin',
+              source: 'model',
+              message: `Model completed ${name}`,
+              data: {
+                traceId: toolTrace.traceId,
+                startedAt: toolTrace.startedAt,
+                completedAt: new Date().toISOString(),
+              },
+            });
+
+            console.log('[McpAppsPanel] Creating widget session from model tool result:', {
+              widgetId,
+              toolName: name,
+              assistantMsgId,
+              resourceUri: meta.ui.resourceUri,
+            });
+
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantMsgId
+                  ? {
+                    ...m,
+                    widgets: [...m.widgets, widgetId],
+                  }
+                  : m
+              )
+            );
+
+            try {
+              const resource = await fetchWidgetResource(meta.ui.resourceUri);
+              if (resource?.text) {
+                updateWidgetSession(widgetId, {
+                  html: resource.text,
+                  resourceMeta: resource._meta || null,
+                });
+                setWidgetStatus(widgetId, 'iframe_initializing');
+                appendWidgetEvent(widgetId, {
+                  kind: 'resource-ready',
+                  source: 'host',
+                  message: 'UI resource loaded and ready for iframe initialization',
+                  data: { resourceUri: meta.ui.resourceUri },
+                });
+              } else {
+                setWidgetStatus(widgetId, 'error', {
+                  lastError: 'UI resource was empty or unavailable',
+                });
+                appendWidgetEvent(widgetId, {
+                  kind: 'resource-error',
+                  source: 'host',
+                  message: 'UI resource was empty or unavailable',
+                  data: { resourceUri: meta.ui.resourceUri },
+                });
+              }
+            } catch (error) {
+              setWidgetStatus(widgetId, 'error', { lastError: error.message });
+              appendWidgetEvent(widgetId, {
+                kind: 'resource-error',
+                source: 'host',
+                message: error.message,
+                data: { resourceUri: meta.ui.resourceUri },
+              });
             }
           }
+
+          toolTraceRef.current.delete(callId);
         },
       });
     } catch (err) {
@@ -650,9 +390,6 @@ export function McpAppsPanel() {
     }
   };
 
-  // Always keep the ref pointing at the latest runAI (used by the stale postMessage closure)
-  runAIRef.current = runAI;
-
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
@@ -665,7 +402,6 @@ export function McpAppsPanel() {
       return;
     }
     if (isStreaming) return;
-
     const userMsg = { id: Date.now(), role: 'user', content: chatInput };
     setMessages((prev) => [...prev, userMsg]);
     setChatInput('');
@@ -851,8 +587,8 @@ export function McpAppsPanel() {
                 key={vp.id}
                 onClick={() => setViewport(vp.id)}
                 className={`p-1.5 rounded flex items-center justify-center transition-all ${viewport === vp.id
-                    ? 'bg-white shadow-[0_1px_3px_rgba(0,0,0,0.1)] text-neutral-900'
-                    : 'text-neutral-500 hover:text-neutral-700 hover:bg-neutral-200/50'
+                  ? 'bg-white shadow-[0_1px_3px_rgba(0,0,0,0.1)] text-neutral-900'
+                  : 'text-neutral-500 hover:text-neutral-700 hover:bg-neutral-200/50'
                   }`}
                 title={vp.label}
               >
@@ -870,7 +606,16 @@ export function McpAppsPanel() {
             )}
             <button
               className="hover:text-red-500 transition-colors"
-              onClick={() => { setMessages([]); setChatInput(''); setLogs([]); }}
+              onClick={() => {
+                setMessages([]);
+                setChatInput('');
+                setLogs([]);
+                widgetRegistry.current.clear();
+                resourceCacheRef.current.clear();
+                resourcePromiseRef.current.clear();
+                toolTraceRef.current.clear();
+                resetWidgetSessions();
+              }}
               title="Clear Chat"
             >
               <TrashIcon />
@@ -922,6 +667,11 @@ export function McpAppsPanel() {
                                 <div key={tc.callId || i} className="flex items-center gap-2.5 text-[12px] text-neutral-500 bg-white border border-neutral-200 shadow-sm rounded-md px-3 py-1.5 w-fit">
                                   {tc.status === 'running' ? (
                                     <div className="w-3 h-3 border-2 border-neutral-300 border-t-neutral-600 rounded-full animate-spin shrink-0"></div>
+                                  ) : tc.status === 'failed' ? (
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-red-500 shrink-0">
+                                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
                                   ) : (
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-green-500 shrink-0">
                                       <polyline points="20 6 9 17 4 12"></polyline>
@@ -960,17 +710,21 @@ export function McpAppsPanel() {
                       {msg.widgets?.length > 0 && (
                         <div className="flex w-full justify-start mt-2">
                           <div className="w-8 h-8 rounded-full bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-600 shrink-0 mr-4 shadow-sm mt-3 opacity-0">
-                            {/* Hidden spacer to align widgets correctly with text */}
+                            {/* Hidden spacer */}
                           </div>
                           <div className="flex-1 min-w-0 space-y-4">
-                            {msg.widgets.map((widget) => (
-                              <ChatWidget
-                                key={widget.id}
-                                widget={widget}
-                                registerWidget={(id, fns) => widgetRegistry.current.set(id, fns)}
-                                unregisterWidget={(id) => widgetRegistry.current.delete(id)}
-                              />
-                            ))}
+                            {msg.widgets.map((widgetId) => {
+                              const session = sessionsById[widgetId];
+                              if (!session) return null;
+                              return (
+                                <ChatWidget
+                                  key={widgetId}
+                                  session={session}
+                                  registerWidget={(id, fns) => widgetRegistry.current.set(id, fns)}
+                                  unregisterWidget={(id) => widgetRegistry.current.delete(id)}
+                                />
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -1025,8 +779,8 @@ export function McpAppsPanel() {
                       type="submit"
                       disabled={!chatInput.trim() || isStreaming}
                       className={`w-8 h-8 rounded-full flex items-center justify-center transition-all shrink-0 ${chatInput.trim() && !isStreaming
-                          ? 'bg-neutral-900 text-white shadow-sm hover:bg-neutral-800'
-                          : 'bg-[#EFECE5] text-[#D0CCC2]'
+                        ? 'bg-neutral-900 text-white shadow-sm hover:bg-neutral-800'
+                        : 'bg-[#EFECE5] text-[#D0CCC2]'
                         }`}
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

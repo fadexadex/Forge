@@ -1,4 +1,5 @@
 // Lightweight MCP client supporting SSE and Streamable HTTP transports
+import { classifyToolOutcome } from './toolOutcome.js';
 
 let requestId = 0;
 const nextId = () => ++requestId;
@@ -133,22 +134,25 @@ export class McpClient {
 
       const responseTime = Math.round(performance.now() - startTime);
 
-      if (result.error) {
-        return {
-          content: null,
-          isError: true,
-          error: result.error,
-          responseTime,
-        };
-      }
-
-      return {
+      const normalized = {
         content: result.result?.content || result.result,
         structuredContent: result.result?.structuredContent,
         _meta: result.result?._meta,
         isError: result.result?.isError || false,
+        error: result.error,
         responseTime,
       };
+
+      const outcome = classifyToolOutcome(normalized);
+      if (!outcome.ok) {
+        return {
+          ...normalized,
+          isError: true,
+          error: normalized.error || { message: outcome.message },
+        };
+      }
+
+      return normalized;
     } catch (err) {
       const responseTime = Math.round(performance.now() - startTime);
       return {

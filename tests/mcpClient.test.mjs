@@ -64,13 +64,36 @@ class McpClient {
     try {
       const result = await this._sendHTTPRequest('tools/call', { name, arguments: args });
       const responseTime = Math.round(performance.now() - startTime);
-      if (result.error) return { content: null, isError: true, error: result.error, responseTime };
-      return {
+      const normalized = {
         content: result.result?.content || result.result,
+        structuredContent: result.result?.structuredContent,
         _meta: result.result?._meta,   // <-- the key change
         isError: result.result?.isError || false,
+        error: result.error,
         responseTime,
       };
+
+      if (normalized.error || normalized.isError) {
+        return {
+          ...normalized,
+          isError: true,
+          error: normalized.error || { message: 'Tool execution failed' },
+        };
+      }
+
+      if (
+        normalized.content === undefined &&
+        normalized.structuredContent === undefined &&
+        normalized._meta === undefined
+      ) {
+        return {
+          ...normalized,
+          isError: true,
+          error: { message: 'Tool response had no usable result payload' },
+        };
+      }
+
+      return normalized;
     } catch (err) {
       return { content: null, isError: true, error: { message: err.message }, responseTime: 0 };
     }
@@ -238,5 +261,18 @@ describe('McpClient', () => {
     const result = await client.callTool('test_tool', {});
     assert.equal(result.isError, true);
     assert.equal(result.error.message, 'Timeout');
+  });
+
+  test('callTool() returns isError for malformed success envelope', async () => {
+    setupMockServer();
+    fetchResponses['tools/call'] = (body) => ({
+      jsonrpc: '2.0', id: body.id,
+      result: undefined,
+    });
+    const client = new McpClient('http://localhost:3000/mcp', 'http');
+    await client.connect();
+    const result = await client.callTool('test_tool', {});
+    assert.equal(result.isError, true);
+    assert.equal(result.error.message, 'Tool response had no usable result payload');
   });
 });
