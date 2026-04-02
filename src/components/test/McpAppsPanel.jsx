@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useTestStore } from '../../stores/testStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { sendChatMessage } from '../../utils/aiChatService';
@@ -31,13 +33,13 @@ const DesktopIcon = () => (
 
 const MobileIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>
+    <rect width="14" height="20" x="5" y="2" rx="2" ry="2" /><path d="M12 18h.01" />
   </svg>
 );
 
 const TabletIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><line x1="12" x2="12.01" y1="18" y2="18"/>
+    <rect width="16" height="20" x="4" y="2" rx="2" ry="2" /><line x1="12" x2="12.01" y1="18" y2="18" />
   </svg>
 );
 
@@ -53,6 +55,54 @@ const KeyIcon = () => (
   </svg>
 );
 
+const JsonView = ({ data }) => {
+  if (data === null) return <span className="text-orange-500">null</span>;
+  if (typeof data === 'boolean') return <span className="text-orange-500">{data ? 'true' : 'false'}</span>;
+  if (typeof data === 'number') return <span className="text-purple-600">{data}</span>;
+  if (typeof data === 'string') return <span className="text-green-700">"{data}"</span>;
+
+  if (Array.isArray(data)) {
+    if (data.length === 0) return <span className="text-neutral-500">[]</span>;
+    return (
+      <div className="inline-block">
+        <span className="text-neutral-500">[</span>
+        <div className="pl-4 border-l border-neutral-200/50">
+          {data.map((val, i) => (
+            <div key={i}>
+              <JsonView data={val} />
+              {i < data.length - 1 && <span className="text-neutral-500">,</span>}
+            </div>
+          ))}
+        </div>
+        <span className="text-neutral-500">]</span>
+      </div>
+    );
+  }
+
+  if (typeof data === 'object') {
+    const keys = Object.keys(data);
+    if (keys.length === 0) return <span className="text-neutral-500">{"{}"}</span>;
+    return (
+      <div className="inline-block">
+        <span className="text-neutral-500">{"{"}</span>
+        <div className="pl-4 border-l border-neutral-200/50">
+          {keys.map((key, i) => (
+            <div key={key}>
+              <span className="text-blue-600">"{key}"</span>
+              <span className="text-neutral-500">: </span>
+              <JsonView data={data[key]} />
+              {i < keys.length - 1 && <span className="text-neutral-500">,</span>}
+            </div>
+          ))}
+        </div>
+        <span className="text-neutral-500">{"}"}</span>
+      </div>
+    );
+  }
+
+  return <span>{String(data)}</span>;
+};
+
 function downloadFile(data, filename, mimeType) {
   const blob = new Blob([data], { type: mimeType || 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
@@ -61,6 +111,295 @@ function downloadFile(data, filename, mimeType) {
   a.download = filename || 'download';
   a.click();
   URL.revokeObjectURL(url);
+}
+
+
+function serializeForInlineScript(value) {
+  return JSON.stringify(value ?? null)
+    .replace(/</g, "\\u003C")
+    .replace(/>/g, "\\u003E")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
+function ChatWidget({ widget, registerWidget, unregisterWidget }) {
+  const [activeTab, setActiveTab] = useState(null); // null | 'data' | 'context'
+  const [modelContext, setModelContext] = useState(null);
+  const iframeRef = useRef(null);
+
+  useEffect(() => {
+    if (registerWidget && widget.id) {
+      registerWidget(widget.id, {
+        checkSource: (source) => iframeRef.current && source === iframeRef.current.contentWindow,
+        setContext: (newContext) => {
+          setModelContext(newContext);
+          setActiveTab('context');
+        },
+        getContext: () => widget.context
+      });
+    }
+    return () => {
+      if (unregisterWidget && widget.id) {
+        unregisterWidget(widget.id);
+      }
+    };
+  }, [widget.id, registerWidget, unregisterWidget]);
+
+  // Auto-resize iframe to match its content height
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe || activeTab) return;
+    let observer = null;
+
+    const fitHeight = () => {
+      try {
+        const root = iframe.contentDocument?.documentElement;
+        if (root) {
+          let targetHeight = root.scrollHeight;
+
+          // Determine the width given to the iframe
+          const width = iframe.offsetWidth;
+
+          // Detect apps that render visualizations/PDFs which commonly use 100vh flex grids.
+          // These collapse to the iframe's default minimum height (~150px) because they fill available space.
+          // Since we know the width we gave it, we can dynamically render a proportional height!
+          const hasCharts = iframe.contentDocument.querySelector('canvas, svg');
+          const isPdfViewer = iframe.contentDocument.querySelector('#viewer, #canvasContainer');
+
+          if (isPdfViewer) {
+            // PDF documents usually look best with a 1:1.4 aspect ratio (A4 proportions)
+            targetHeight = Math.max(targetHeight, width * 1.3);
+          } else if (hasCharts) {
+            // Data visualizations need enough vertical room for stacked chart grids
+            targetHeight = Math.max(targetHeight, width * 1.1);
+          }
+
+          if (targetHeight > 0) {
+            // Add a small buffer to prevent scrollbars jumping on zoom/resize
+            iframe.style.height = (targetHeight + 10) + 'px';
+          }
+        }
+      } catch { /* cross-origin guard */ }
+    };
+
+    let mutObserver = null;
+    const onLoad = () => {
+      fitHeight();
+      try {
+        observer = new ResizeObserver(fitHeight);
+        observer.observe(iframe.contentDocument.documentElement);
+
+        // Re-check after async chart renders (e.g. Chart.js draws after load)
+        setTimeout(fitHeight, 300);
+        setTimeout(fitHeight, 800);
+
+        // Watch for canvas/svg DOM additions that signal chart completion
+        mutObserver = new MutationObserver(fitHeight);
+        mutObserver.observe(iframe.contentDocument.body, { childList: true, subtree: true });
+      } catch { }
+    };
+
+    iframe.addEventListener('load', onLoad);
+    return () => {
+      iframe.removeEventListener('load', onLoad);
+      observer?.disconnect();
+      mutObserver?.disconnect();
+    };
+  }, [activeTab]);
+
+  // Strict CSP enforcing the Security Contract
+  const cspObj = widget.context?.resourceMeta?.ui?.csp;
+  let cspString = '';
+
+  if (cspObj) {
+    const connectDomains = (cspObj.connectDomains || []).filter(Boolean);
+    const resourceDomains = (cspObj.resourceDomains || []).filter(Boolean);
+    const frameDomains = (cspObj.frameDomains || []).filter(Boolean);
+    const baseUriDomains = (cspObj.baseUriDomains || []).filter(Boolean);
+
+    const allConnect = Array.from(new Set([...connectDomains, ...resourceDomains]));
+    const connectSrc = allConnect.length > 0 ? allConnect.join(" ") : "'none'";
+    const resourceSrc = resourceDomains.length > 0 ? ["data:", "blob:", ...resourceDomains].join(" ") : "data: blob:";
+    const frameSrc = frameDomains.length > 0 ? frameDomains.join(" ") : "'none'";
+    const baseUri = baseUriDomains.length > 0 ? baseUriDomains.join(" ") : "'none'";
+
+    cspString = [
+      "default-src 'none'",
+      "script-src 'unsafe-inline' " + resourceSrc,
+      "style-src 'unsafe-inline' " + resourceSrc,
+      "img-src " + resourceSrc,
+      "font-src " + resourceSrc,
+      "media-src " + resourceSrc,
+      "connect-src " + connectSrc,
+      "frame-src " + frameSrc,
+      "object-src 'none'",
+      "base-uri " + baseUri,
+    ].join("; ");
+  } else {
+    // Default strict CSP if none provided
+    cspString = [
+      "default-src 'none'",
+      "script-src 'unsafe-inline'",
+      "style-src 'unsafe-inline'",
+      "img-src data: blob:",
+      "font-src data: blob:",
+      "media-src data: blob:",
+      "connect-src 'none'",
+      "frame-src 'none'",
+      "object-src 'none'",
+      "base-uri 'none'",
+    ].join("; ");
+  }
+
+  const cspMetaTag = `<meta http-equiv="Content-Security-Policy" content="${cspString}">`;
+
+  const configData = {
+    toolInput: widget.context?.toolInput || {},
+    toolOutput: widget.context?.toolOutput || null,
+    theme: 'light',
+    displayMode: 'inline',
+    viewMode: 'inline',
+    viewParams: {}
+  };
+
+  const contextScript = `<script type="application/json" id="openai-compat-config">${serializeForInlineScript(configData)}</script>`;
+
+  const openaiCompatScript = `<script>
+(function() {
+  if (!window.openai) {
+    const configEl = document.getElementById('openai-compat-config');
+    let config = {};
+    if (configEl) {
+      try { config = JSON.parse(configEl.textContent); } catch (e) {}
+    }
+    
+    window.openai = {
+      toolInput: config.toolInput || {},
+      toolOutput: config.toolOutput || null,
+      theme: config.theme || 'light',
+      displayMode: config.displayMode || 'inline',
+      viewMode: config.viewMode || 'inline',
+      viewParams: config.viewParams || {},
+      widgetState: null,
+      callTool: (name, args) => {
+        let callId = 1; // dummy id for compat wrapper
+        return new Promise((resolve, reject) => {
+          const handleMessage = (e) => {
+            const msg = e.data;
+            if (msg.jsonrpc === '2.0' && msg.id === callId) {
+              window.removeEventListener('message', handleMessage);
+              if (msg.error) reject(msg.error);
+              else resolve(msg.result);
+            }
+          };
+          window.addEventListener('message', handleMessage);
+          window.parent.postMessage({ jsonrpc: '2.0', id: callId, method: 'tools/call', params: { name, arguments: args || {} } }, '*');
+        });
+      },
+      structuredContent: (content) => {
+        window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/update-model-context', params: { structuredContent: content } }, '*');
+      },
+      sendFollowUpMessage: (text) => {
+        window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/send-follow-up', params: { text } }, '*');
+      }
+    };
+
+    // Forward tool-input dynamically to window.openai as well, in case apps depend on it updating
+    const originalPostMessage = window.postMessage;
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.method === 'ui/notifications/tool-input') {
+        const sc = e.data.params?.structuredContent || e.data.params?.arguments;
+        window.openai.toolOutput = sc;
+        // Optionally update other fields if needed
+      }
+    });
+  }
+})();
+</script>`;
+
+
+  return (
+    <div className="w-full mt-3 flex flex-col">
+      <div className="bg-white rounded-xl border border-neutral-200/80 shadow-[0_2px_10px_rgba(0,0,0,0.02)] overflow-hidden w-full">
+        <div className="h-10 px-4 bg-neutral-50/80 border-b border-neutral-200/80 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-neutral-400">
+              <polygon points="12 2 2 7 12 12 22 7 12 2" />
+              <polyline points="2 17 12 22 22 17" />
+              <polyline points="2 12 17 22 22 17" />
+            </svg>
+            <span className="text-[12px] font-mono text-neutral-600 font-medium">{widget.toolName}</span>
+          </div>
+          <div className="flex items-center gap-2 text-[11px] font-medium font-mono text-neutral-500">
+            <button
+              onClick={() => setActiveTab(activeTab === 'data' ? null : 'data')}
+              className={`px-2 py-1 rounded transition-colors ${activeTab === 'data' ? 'bg-neutral-200 text-neutral-800' : 'hover:bg-neutral-200/60'}`}
+            >
+              Data
+            </button>
+            <button
+              onClick={() => setActiveTab(activeTab === 'context' ? null : 'context')}
+              className={`px-2 py-1 rounded transition-colors flex items-center gap-1 ${activeTab === 'context' ? 'bg-neutral-200 text-neutral-800' : 'hover:bg-neutral-200/60'}`}
+            >
+              <div className={`w-1.5 h-1.5 rounded-full ${modelContext ? 'bg-blue-500' : 'bg-neutral-300'}`} />
+              Context
+            </button>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-green-500 ml-1">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </div>
+        </div>
+
+        {activeTab === 'data' && (
+          <div className="p-4 bg-neutral-50 border-b border-neutral-200/80 overflow-x-auto max-h-[400px] overflow-y-auto text-[12px] font-mono leading-loose">
+            <div className="mb-4">
+              <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2">Input</div>
+              <JsonView data={widget.context?.toolInput || {}} />
+            </div>
+            <div>
+              <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2">Result</div>
+              <JsonView data={widget.context?.toolOutput?.structuredContent || widget.context?.toolOutput || {}} />
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'context' && (
+          <div className="p-4 bg-neutral-50 border-b border-neutral-200/80 overflow-x-auto max-h-[400px] overflow-y-auto text-[12px] font-mono leading-loose">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Model Context</div>
+              {modelContext && <div className="text-[10px] text-neutral-400">Updated: {new Date().toLocaleTimeString()}</div>}
+            </div>
+            <div className="mb-4">
+              {modelContext ? <JsonView data={modelContext} /> : <span className="text-neutral-400 italic">No context has been sent back to the model yet.</span>}
+            </div>
+            <div className="text-[11px] text-neutral-500 font-sans bg-white p-2 rounded border border-neutral-200">
+              This context will be included in future turns with the model.
+            </div>
+          </div>
+        )}
+
+        <div className={activeTab ? 'hidden' : 'block'}>
+          <iframe
+            ref={iframeRef}
+            srcDoc={(() => {
+              const headContent = cspMetaTag + contextScript + openaiCompatScript;
+              let html = widget.html;
+              if (/<head[^>]*>/i.test(html)) {
+                return html.replace(/<head[^>]*>/i, match => match + headContent);
+              }
+              if (/<html[^>]*>/i.test(html)) {
+                return html.replace(/<html[^>]*>/i, match => match + '<head>' + headContent + '</head>');
+              }
+              return `<!DOCTYPE html><html><head>${headContent}<meta charset="UTF-8"></head><body>${html}</body></html>`;
+            })()}
+            sandbox="allow-scripts allow-forms allow-popups allow-downloads allow-modals allow-same-origin"
+            className="w-full border-0 bg-white"
+          />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function McpAppsPanel() {
@@ -74,13 +413,15 @@ export function McpAppsPanel() {
   const [viewport, setViewport] = useState('desktop');
   const [messages, setMessages] = useState([]);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [widgetHtml, setWidgetHtml] = useState(null);
-  const [widgetContext, setWidgetContext] = useState(null);
-  const [widgetToolName, setWidgetToolName] = useState(null);
   const [logs, setLogs] = useState([]);
 
   const scrollRef = useRef(null);
-  const iframeRef = useRef(null);
+  const messagesRef = useRef([]);
+  const runAIRef = useRef(null);
+  const widgetRegistry = useRef(new Map());
+
+  // Keep messagesRef in sync so stale closures can read latest messages
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
 
   const viewports = [
     { id: 'mobile', icon: <MobileIcon />, label: 'Mobile', width: '375px' },
@@ -95,22 +436,41 @@ export function McpAppsPanel() {
     ]);
   };
 
-  // Auto-scroll to bottom
+  // Auto-scroll: to the start of the latest message when it has widgets (so text is visible),
+  // otherwise to the bottom.
   useEffect(() => {
-    if (scrollRef.current) {
+    const lastMsg = messages[messages.length - 1];
+    if (!lastMsg) return;
+    if (lastMsg.role === 'assistant' && lastMsg.widgets?.length > 0) {
+      const el = scrollRef.current?.querySelector(`[data-msg-id="${lastMsg.id}"]`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, widgetHtml]);
+  }, [messages]);
 
   // PostMessage bridge for iframe widgets
   useEffect(() => {
     const handleMessage = async (event) => {
-      if (!iframeRef.current || event.source !== iframeRef.current.contentWindow) return;
-
       const { jsonrpc, id, method, params } = event.data || {};
       if (jsonrpc !== '2.0') return;
 
       addLog({ dir: '<-', type: `bridge: ${method}`, source: 'mcp-apps-bridge' });
+
+      // Determine which widget sent this message by matching event.source
+      let __widgetId = null;
+      for (const [wId, fns] of widgetRegistry.current.entries()) {
+        if (fns.checkSource(event.source)) {
+          __widgetId = wId;
+          break;
+        }
+      }
+
+      if (!__widgetId) {
+        console.warn('CRITICAL: __widgetId is null for method', method, 'Registry size:', widgetRegistry.current.size);
+      }
+
+      console.log('bridge received:', method, { __widgetId, params });
 
       try {
         let result;
@@ -122,31 +482,176 @@ export function McpAppsPanel() {
         } else if (method === 'resources/read') {
           result = await client.readResource(params.uri);
         } else if (method === 'ui/update-model-context') {
-          setWidgetContext((prev) => ({ ...prev, ...params }));
+          const structuredContent = params.structuredContent || params;
+          if (__widgetId) {
+            widgetRegistry.current.get(__widgetId)?.setContext(structuredContent);
+          }
+          const contextMsg = {
+            id: Date.now() + Math.random(),
+            role: 'user',
+            isHidden: true,
+            content: `[System Note: The user interacted with the UI and provided the following context]\n${JSON.stringify(structuredContent, null, 2)}`
+          };
+          setMessages((prev) => [...prev, contextMsg]);
           result = { success: true };
         } else if (method === 'ui/download-file') {
           downloadFile(params.data, params.filename, params.mimeType);
           result = { success: true };
+        } else if (method === 'ui/initialize') {
+          const hostContext = __widgetId ? widgetRegistry.current.get(__widgetId)?.getContext() : {};
+          result = {
+            protocolVersion: '2024-11-05',
+            hostInfo: { name: 'Forge', version: '1.0.0' },
+            hostCapabilities: {},
+            hostContext: hostContext
+          };
+        } else if (method === 'ui/notifications/initialized') {
+          const source = event.source;
+          const deliverToolInput = (attempts = 0) => {
+            let wId = null;
+            for (const [id, fns] of widgetRegistry.current.entries()) {
+              if (fns.checkSource(source)) { wId = id; break; }
+            }
+            if (wId) {
+              const context = widgetRegistry.current.get(wId)?.getContext();
+              console.log('Got initialized, found widget:', wId, context);
+              if (context) {
+                const payload = {
+                  jsonrpc: '2.0',
+                  method: 'ui/notifications/tool-input',
+                  params: {
+                    arguments: context.toolInput,
+                    structuredContent: context.toolOutput?.structuredContent || context.toolOutput,
+                  }
+                };
+                console.log('Sending tool-input payload:', payload);
+                source.postMessage(payload, '*');
+              }
+            } else if (attempts < 20) {
+              console.log('Widget not yet registered, retrying...', attempts);
+              setTimeout(() => deliverToolInput(attempts + 1), 50);
+            } else {
+              console.warn('Failed to find widget for initialized event after 20 attempts');
+            }
+          };
+          deliverToolInput();
+          return;
+        } else if (method.startsWith('ui/notifications/')) {
+          return; // Notifications don't need a response
         }
 
-        iframeRef.current?.contentWindow?.postMessage({ jsonrpc: '2.0', id, result }, '*');
+        if (id !== undefined) {
+          event.source.postMessage({ jsonrpc: '2.0', id, result }, '*');
+        }
       } catch (err) {
-        iframeRef.current?.contentWindow?.postMessage(
-          { jsonrpc: '2.0', id, error: { code: -32603, message: err.message } },
-          '*'
-        );
+        if (id !== undefined) {
+          event.source.postMessage(
+            { jsonrpc: '2.0', id, error: { code: -32603, message: err.message } },
+            '*'
+          );
+        }
       }
     };
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [client]);
+  }, [client, serverInfo]);
 
-  const fetchWidgetHtml = async (resourceUri) => {
+  const fetchWidgetResource = async (resourceUri) => {
     if (!client) return null;
     const result = await client.readResource(resourceUri);
-    return result.contents?.[0]?.text || null;
+    return result.contents?.[0] || null;
   };
+
+  // Core AI streaming runner — called from both the chat form and the postMessage bridge
+  const runAI = async (messagesToSend) => {
+    if (!client || !geminiApiKey) return;
+    const assistantMsgId = Date.now() + Math.random() + 1;
+    setMessages((prev) => [
+      ...prev,
+      { id: assistantMsgId, role: 'assistant', content: '', toolCalls: [], widgets: [] },
+    ]);
+    setIsStreaming(true);
+    try {
+      await sendChatMessage({
+        messages: messagesToSend,
+        mcpTools: tools,
+        mcpClient: client,
+        apiKey: geminiApiKey,
+        onTextDelta: (delta) => {
+          if (delta) {
+            setMessages((prev) =>
+              prev.map((m) => m.id === assistantMsgId ? { ...m, content: m.content + delta } : m)
+            );
+          }
+        },
+        onToolCall: (name, args, callId) => {
+          addLog({ dir: '->', type: `tools/call: ${name}` });
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId ? {
+                ...m,
+                toolCalls: m.toolCalls.some(tc => tc.callId === callId)
+                  ? m.toolCalls
+                  : [...m.toolCalls, { toolName: name, args, callId, status: 'running' }]
+              } : m
+            )
+          );
+        },
+        onToolResult: async (name, args, toolResult, callId) => {
+          addLog({ dir: '<-', type: `tools/result: ${name}` });
+
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId ? {
+                ...m,
+                toolCalls: m.toolCalls.map(tc =>
+                  tc.callId === callId ? { ...tc, status: 'completed', result: toolResult } : tc
+                )
+              } : m
+            )
+          );
+
+          const toolDef = tools.find((t) => t.name === name);
+          const meta = toolResult._meta || toolDef?._meta;
+          if (meta?.ui?.resourceUri) {
+            const resource = await fetchWidgetResource(meta.ui.resourceUri);
+            if (resource?.text) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantMsgId
+                    ? {
+                      ...m,
+                      widgets: [
+                        ...m.widgets,
+                        {
+                          id: Date.now() + Math.random(),
+                          toolName: name,
+                          html: resource.text,
+                          context: { toolInput: args, toolOutput: toolResult, resourceMeta: resource._meta },
+                        },
+                      ],
+                    }
+                    : m
+                )
+              );
+            }
+          }
+        },
+      });
+    } catch (err) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantMsgId ? { ...m, content: `Error: ${err.message}`, isError: true } : m
+        )
+      );
+    } finally {
+      setIsStreaming(false);
+    }
+  };
+
+  // Always keep the ref pointing at the latest runAI (used by the stale postMessage closure)
+  runAIRef.current = runAI;
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -159,110 +664,17 @@ export function McpAppsPanel() {
       alert('Please connect to an MCP server first.');
       return;
     }
+    if (isStreaming) return;
 
     const userMsg = { id: Date.now(), role: 'user', content: chatInput };
     setMessages((prev) => [...prev, userMsg]);
     setChatInput('');
-    setIsStreaming(true);
-
-    let capturedArgs = {};
-
-    try {
-      const result = await sendChatMessage({
-        messages: [...messages, userMsg],
-        mcpTools: tools,
-        mcpClient: client,
-        apiKey: geminiApiKey,
-        onToolCall: (name, args) => {
-          capturedArgs = args;
-          addLog({ dir: '->', type: `tools/call: ${name}` });
-        },
-        onToolResult: async (name, args, toolResult) => {
-          addLog({ dir: '<-', type: `tools/result: ${name}` });
-          if (toolResult._meta?.ui?.resourceUri) {
-            const html = await fetchWidgetHtml(toolResult._meta.ui.resourceUri);
-            if (html) {
-              setWidgetHtml(html);
-              setWidgetContext({ toolInput: args, toolOutput: toolResult });
-              setWidgetToolName(name);
-            }
-          }
-        },
-      });
-
-      if (result.text || result.toolCalls.length > 0) {
-        const assistantMsg = {
-          id: Date.now(),
-          role: 'assistant',
-          content: result.text,
-          toolCalls: result.toolCalls,
-        };
-        setMessages((prev) => [...prev, assistantMsg]);
-      }
-    } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        { id: Date.now(), role: 'assistant', content: `Error: ${err.message}`, isError: true },
-      ]);
-    } finally {
-      setIsStreaming(false);
-    }
+    runAI([...messagesRef.current, userMsg]);
   };
 
   const filteredTools = (tools || []).filter((t) =>
     t.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  const renderWidget = () => {
-    if (!widgetHtml) return null;
-
-    const contextScript = `<script>
-window.__MCP_CONTEXT__ = ${JSON.stringify({
-  toolInput: widgetContext?.toolInput,
-  toolOutput: widgetContext?.toolOutput,
-  theme: 'light',
-})};
-</script>`;
-
-    return (
-      <div className="w-full mt-2 flex flex-col">
-        <div className="flex items-center gap-2 mb-2 ml-2">
-          <span className="text-[13px] text-neutral-600">Rendered widget from</span>
-          <code className="px-1.5 py-0.5 bg-neutral-200/50 text-neutral-800 text-[12px] rounded font-mono">
-            {widgetToolName}
-          </code>
-        </div>
-
-        <div className="bg-white rounded-xl border border-neutral-200/80 shadow-[0_2px_10px_rgba(0,0,0,0.02)] overflow-hidden w-full">
-          <div className="h-10 px-4 bg-neutral-50/80 border-b border-neutral-200/80 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-neutral-400">
-                <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-                <polyline points="2 17 12 22 22 17"/>
-                <polyline points="2 12 17 22 22 17"/>
-              </svg>
-              <span className="text-[12px] font-mono text-neutral-500">{widgetToolName}</span>
-            </div>
-            <button
-              onClick={() => { setWidgetHtml(null); setWidgetContext(null); setWidgetToolName(null); }}
-              className="text-neutral-400 hover:text-neutral-700 transition-colors text-[11px]"
-            >
-              ✕
-            </button>
-          </div>
-
-          <iframe
-            ref={iframeRef}
-            srcDoc={contextScript + widgetHtml}
-            sandbox="allow-scripts allow-forms allow-popups"
-            className="w-full border-0"
-            style={{ minHeight: '400px' }}
-            title="MCP Widget"
-          />
-        </div>
-      </div>
-    );
-  };
 
   const apiKeyMissing = !geminiApiKey;
 
@@ -438,11 +850,10 @@ window.__MCP_CONTEXT__ = ${JSON.stringify({
               <button
                 key={vp.id}
                 onClick={() => setViewport(vp.id)}
-                className={`p-1.5 rounded flex items-center justify-center transition-all ${
-                  viewport === vp.id
+                className={`p-1.5 rounded flex items-center justify-center transition-all ${viewport === vp.id
                     ? 'bg-white shadow-[0_1px_3px_rgba(0,0,0,0.1)] text-neutral-900'
                     : 'text-neutral-500 hover:text-neutral-700 hover:bg-neutral-200/50'
-                }`}
+                  }`}
                 title={vp.label}
               >
                 {vp.icon}
@@ -459,7 +870,7 @@ window.__MCP_CONTEXT__ = ${JSON.stringify({
             )}
             <button
               className="hover:text-red-500 transition-colors"
-              onClick={() => { setMessages([]); setChatInput(''); setWidgetHtml(null); setLogs([]); }}
+              onClick={() => { setMessages([]); setChatInput(''); setLogs([]); }}
               title="Clear Chat"
             >
               <TrashIcon />
@@ -478,8 +889,8 @@ window.__MCP_CONTEXT__ = ${JSON.stringify({
             }}
           >
             {/* Chat area */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 md:p-8 pb-32">
-              {messages.length === 0 && !widgetHtml ? (
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 md:p-8">
+              {messages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center max-w-md mx-auto text-center opacity-80">
                   <div className="w-16 h-16 bg-white border border-neutral-200 shadow-sm text-neutral-300 rounded-2xl flex items-center justify-center mb-6">
                     <SparklesIcon />
@@ -491,53 +902,83 @@ window.__MCP_CONTEXT__ = ${JSON.stringify({
                 </div>
               ) : (
                 <div className="max-w-4xl mx-auto space-y-8">
-                  {messages.map((msg) => (
-                    <div key={msg.id} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      {msg.role === 'assistant' && (
-                        <div className="w-8 h-8 rounded-full bg-green-50 border border-green-100 flex items-center justify-center text-green-600 shrink-0 mr-4 shadow-sm mt-1">
-                          <SparklesIcon />
+                  {messages.filter(m => !m.isHidden).map((msg) => (
+                    <div key={msg.id} data-msg-id={msg.id} className={`flex w-full flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                      <div className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        {msg.role === 'assistant' && (
+                          <div className="w-8 h-8 rounded-full bg-green-50 border border-green-100 flex items-center justify-center text-green-600 shrink-0 mr-4 shadow-sm mt-1">
+                            <SparklesIcon />
+                          </div>
+                        )}
+                        <div className={`max-w-[85%] ${msg.role === 'user' ? '' : 'w-full'}`}>
+                          {msg.role === 'user' && (
+                            <div className="bg-white border border-neutral-200 shadow-sm text-neutral-900 px-5 py-3 rounded-2xl rounded-tr-sm text-[14px] font-medium inline-block whitespace-pre-wrap">
+                              {msg.content}
+                            </div>
+                          )}
+                          {msg.role === 'assistant' && msg.toolCalls?.length > 0 && (
+                            <div className="mb-3 space-y-1.5">
+                              {msg.toolCalls.map((tc, i) => (
+                                <div key={tc.callId || i} className="flex items-center gap-2.5 text-[12px] text-neutral-500 bg-white border border-neutral-200 shadow-sm rounded-md px-3 py-1.5 w-fit">
+                                  {tc.status === 'running' ? (
+                                    <div className="w-3 h-3 border-2 border-neutral-300 border-t-neutral-600 rounded-full animate-spin shrink-0"></div>
+                                  ) : (
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-green-500 shrink-0">
+                                      <polyline points="20 6 9 17 4 12"></polyline>
+                                    </svg>
+                                  )}
+                                  <code className="font-mono text-[11px] font-medium text-neutral-700">{tc.toolName}</code>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {msg.role === 'assistant' && msg.content && (
+                            <div className={`text-[14px] leading-relaxed prose prose-sm max-w-none ${msg.isError ? 'text-red-600' : 'text-neutral-700'}`}>
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {msg.content}
+                              </ReactMarkdown>
+                              {isStreaming && messages[messages.length - 1]?.id === msg.id && (
+                                <span className="inline-block w-1.5 h-3.5 bg-green-500 animate-[pulse_1s_infinite] ml-0.5" />
+                              )}
+                            </div>
+                          )}
+                          {msg.role === 'assistant' && !msg.content && msg.toolCalls?.length === 0 && isStreaming && messages[messages.length - 1]?.id === msg.id && (
+                            <div className="flex items-center gap-1 h-[22px] mt-1">
+                              {[0, 1, 2].map((i) => (
+                                <div
+                                  key={i}
+                                  className="w-1.5 h-1.5 rounded-full bg-neutral-300 animate-bounce"
+                                  style={{ animationDelay: `${i * 0.15}s` }}
+                                />
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      )}
-                      <div className={`max-w-[85%] ${msg.role === 'user' ? '' : 'w-full'}`}>
-                        {msg.role === 'user' && (
-                          <div className="bg-white border border-neutral-200 shadow-sm text-neutral-900 px-5 py-3 rounded-2xl rounded-tr-sm text-[14px] font-medium inline-block">
-                            {msg.content}
+                      </div>
+
+                      {/* Widget rendering per message */}
+                      {msg.widgets?.length > 0 && (
+                        <div className="flex w-full justify-start mt-2">
+                          <div className="w-8 h-8 rounded-full bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-600 shrink-0 mr-4 shadow-sm mt-3 opacity-0">
+                            {/* Hidden spacer to align widgets correctly with text */}
                           </div>
-                        )}
-                        {msg.role === 'assistant' && msg.content && (
-                          <div className={`text-[14px] leading-relaxed ${msg.isError ? 'text-red-600' : 'text-neutral-700'}`}>
-                            {msg.content}
-                          </div>
-                        )}
-                        {msg.role === 'assistant' && msg.toolCalls?.length > 0 && (
-                          <div className="mt-2 space-y-1">
-                            {msg.toolCalls.map((tc, i) => (
-                              <div key={i} className="flex items-center gap-2 text-[12px] text-neutral-500">
-                                <PlayIcon />
-                                <code className="font-mono">{tc.toolName}</code>
-                              </div>
+                          <div className="flex-1 min-w-0 space-y-4">
+                            {msg.widgets.map((widget) => (
+                              <ChatWidget
+                                key={widget.id}
+                                widget={widget}
+                                registerWidget={(id, fns) => widgetRegistry.current.set(id, fns)}
+                                unregisterWidget={(id) => widgetRegistry.current.delete(id)}
+                              />
                             ))}
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
                   ))}
 
-                  {/* Widget rendering */}
-                  {widgetHtml && (
-                    <div className="flex w-full justify-start">
-                      <div className="w-8 h-8 rounded-full bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-600 shrink-0 mr-4 shadow-sm mt-1">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="3" y="3" width="18" height="18" rx="2"/>
-                          <path d="M3 9h18M9 21V9"/>
-                        </svg>
-                      </div>
-                      <div className="flex-1 min-w-0">{renderWidget()}</div>
-                    </div>
-                  )}
-
                   {/* Streaming indicator */}
-                  {isStreaming && (
+                  {isStreaming && messages[messages.length - 1]?.role !== 'assistant' && (
                     <div className="flex w-full justify-start">
                       <div className="w-8 h-8 rounded-full bg-green-50 border border-green-100 flex items-center justify-center text-green-600 shrink-0 mr-4 shadow-sm">
                         <SparklesIcon />
@@ -558,7 +999,7 @@ window.__MCP_CONTEXT__ = ${JSON.stringify({
             </div>
 
             {/* Chat Input */}
-            <div className="absolute bottom-6 left-0 w-full px-4 md:px-6 z-20">
+            <div className="w-full px-4 md:px-6 z-20 pb-6 shrink-0">
               <div className="max-w-4xl mx-auto bg-[#F8F6F1] border border-[#EBE8E0] rounded-2xl p-2 shadow-[0_8px_30px_rgba(0,0,0,0.06)] flex flex-col transition-all">
                 <form onSubmit={handleSendMessage} className="flex items-center relative h-12">
                   <input
@@ -570,8 +1011,8 @@ window.__MCP_CONTEXT__ = ${JSON.stringify({
                       !client
                         ? 'Connect to an MCP server first…'
                         : apiKeyMissing
-                        ? 'Configure Gemini API key in Settings…'
-                        : 'Ask something to render UI…'
+                          ? 'Configure Gemini API key in Settings…'
+                          : 'Ask something to render UI…'
                     }
                     className={`w-full bg-transparent pl-4 py-3 text-[14px] focus:outline-none text-neutral-900 placeholder:text-neutral-400 placeholder:font-normal font-mono pr-12 ${isStreaming ? 'opacity-50' : ''}`}
                   />
@@ -583,14 +1024,13 @@ window.__MCP_CONTEXT__ = ${JSON.stringify({
                     <button
                       type="submit"
                       disabled={!chatInput.trim() || isStreaming}
-                      className={`w-8 h-8 rounded-full flex items-center justify-center transition-all shrink-0 ${
-                        chatInput.trim() && !isStreaming
+                      className={`w-8 h-8 rounded-full flex items-center justify-center transition-all shrink-0 ${chatInput.trim() && !isStreaming
                           ? 'bg-neutral-900 text-white shadow-sm hover:bg-neutral-800'
                           : 'bg-[#EFECE5] text-[#D0CCC2]'
-                      }`}
+                        }`}
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                        <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
                       </svg>
                     </button>
                   </div>

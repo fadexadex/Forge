@@ -144,6 +144,7 @@ export class McpClient {
 
       return {
         content: result.result?.content || result.result,
+        structuredContent: result.result?.structuredContent,
         _meta: result.result?._meta,
         isError: result.result?.isError || false,
         responseTime,
@@ -212,7 +213,10 @@ export class McpClient {
 
       fetch(proxyUrl(this.messageEndpoint), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json, text/event-stream'
+        },
         body,
         signal: this.abortController?.signal,
       }).catch((err) => {
@@ -232,7 +236,10 @@ export class McpClient {
 
     return fetch(proxyUrl(this.messageEndpoint), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream'
+      },
       body,
       signal: this.abortController?.signal,
     });
@@ -277,7 +284,10 @@ export class McpClient {
 
     await fetch(proxyUrl(this.url), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream'
+      },
       body,
       signal: this.abortController?.signal,
     });
