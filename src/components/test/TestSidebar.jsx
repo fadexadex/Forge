@@ -24,12 +24,11 @@ export function TestSidebar() {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-white">
       {isConnected ? (
         <>
           <ConnectionStatus />
           
-          {/* Main sections */}
           <div className="py-2 border-b border-border">
             <button
               onClick={() => setSelectedPrimitiveType('chat')}
@@ -66,7 +65,7 @@ export function TestSidebar() {
           </div>
 
           <div className="px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Primitives
+            Explore primitives
           </div>
 
           <div className="px-2 pb-2">

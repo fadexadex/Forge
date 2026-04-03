@@ -24,3 +24,7 @@ dist-ssr
 *.sw?
 
 .env
+
+mcpjam/
+
+sample-mcp-apps-chatflow/

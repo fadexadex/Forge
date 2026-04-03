@@ -7,6 +7,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { buildCspString, buildOpenaiCompatScript, buildIframeSrcdoc } from './iframeUtils.js';
 import { JsonView } from './JsonView.jsx';
+import { formatModelContextDisplay, formatToolDisplay } from '../../../utils/toolDisplay.js';
 
 const STATUS_LABELS = {
   resource_loading: 'Loading Resource',
@@ -32,9 +33,27 @@ function formatStatus(status) {
   return STATUS_LABELS[status] || status || 'Unknown';
 }
 
+function formatPreview(value) {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
 export function ChatWidget({ session, registerWidget, unregisterWidget }) {
   const [activeTab, setActiveTab] = useState(null); // null | 'data' | 'context' | 'runtime'
   const iframeRef = useRef(null);
+  const display = useMemo(
+    () => formatToolDisplay({ args: session?.invocationArgs, result: session?.toolResult }),
+    [session?.invocationArgs, session?.toolResult]
+  );
+  const modelContextDisplay = useMemo(
+    () => formatModelContextDisplay(session?.modelContext),
+    [session?.modelContext]
+  );
 
   useEffect(() => {
     if (!registerWidget || !session?.widgetId) return undefined;
@@ -185,12 +204,40 @@ export function ChatWidget({ session, registerWidget, unregisterWidget }) {
           <div className="p-4 bg-neutral-50 border-b border-neutral-200/80 overflow-x-auto max-h-[420px] overflow-y-auto text-[12px] font-mono leading-loose">
             <div className="mb-4">
               <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2">Invocation Args</div>
-              <JsonView data={session.invocationArgs || {}} />
+              {display.toolInputDisplay.value != null
+                ? <JsonView data={display.toolInputDisplay.value} />
+                : <span className="text-neutral-400 italic">No input arguments were passed to this tool call.</span>}
             </div>
             <div>
               <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2">Originating Result</div>
-              <JsonView data={session.toolResult || {}} />
+              {display.toolResultDisplay.value != null
+                ? <JsonView data={display.toolResultDisplay.value} />
+                : <span className="text-neutral-400 italic">No user-facing result payload was returned.</span>}
             </div>
+            {display.hasRawDetails ? (
+              <details className="mt-4 rounded-lg border border-neutral-200 bg-white">
+                <summary className="cursor-pointer list-none px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+                  Raw MCP Response
+                </summary>
+                <div className="border-t border-neutral-200 p-3 text-[11px] text-neutral-700">
+                  <pre className="overflow-x-auto whitespace-pre-wrap">{formatPreview(display.rawResult)}</pre>
+                </div>
+              </details>
+            ) : null}
+            {display.isMcpAppResult ? (
+              <div className="mt-4 text-[11px] text-sky-700 font-sans bg-sky-50 p-2 rounded border border-sky-200">
+                This tool result opened an MCP App view via <span className="font-mono">{display.uiResourceUri}</span>.
+              </div>
+            ) : null}
+            {session.warnings?.length ? (
+              <div className="mt-4 space-y-2">
+                {session.warnings.map((warning) => (
+                  <div key={warning.code} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-sans text-amber-800">
+                    {warning.message}
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         )}
 
@@ -201,12 +248,12 @@ export function ChatWidget({ session, registerWidget, unregisterWidget }) {
               {session.modelContext && <div className="text-[10px] text-neutral-400">Updated: {new Date(session.updatedAt).toLocaleTimeString()}</div>}
             </div>
             <div className="mb-4">
-              {session.modelContext
-                ? <JsonView data={session.modelContext} />
-                : <span className="text-neutral-400 italic">No model context has been sent from this app session.</span>}
+              {modelContextDisplay.value != null
+                ? <JsonView data={modelContextDisplay.value} />
+                : <span className="text-neutral-400 italic">{modelContextDisplay.summary}</span>}
             </div>
             <div className="text-[11px] text-neutral-500 font-sans bg-white p-2 rounded border border-neutral-200">
-              This payload is stored for later model turns but is not used as render data.
+              This payload is stored for later model turns and is separate from the tool result shown in the Data tab.
             </div>
           </div>
         )}

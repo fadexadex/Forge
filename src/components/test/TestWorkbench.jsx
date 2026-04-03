@@ -200,9 +200,13 @@ export function TestWorkbench() {
         {renderMainContent()}
       </div>
       
-      {/* Log Bus Side Panel - visible mainly in chat/apps mode or overall */}
-      {selectedPrimitiveType !== 'apps' && (
-        <LogBusPanel isCollapsed={isLogsCollapsed} onToggle={() => setIsLogsCollapsed(!isLogsCollapsed)} />
+      {/* Tools/resources/prompts still use the generic side panel. Chat and Apps own their runtime-specific logs. */}
+      {selectedPrimitiveType !== 'apps' && selectedPrimitiveType !== 'chat' && (
+        <LogBusPanel
+          logs={[]}
+          isCollapsed={isLogsCollapsed}
+          onToggle={() => setIsLogsCollapsed(!isLogsCollapsed)}
+        />
       )}
     </div>
   );

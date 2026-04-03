@@ -7,7 +7,6 @@ export function ToolList() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* Header */}
       <div className="px-4 py-2.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Tools</span>
@@ -17,7 +16,6 @@ export function ToolList() {
         </div>
       </div>
 
-      {/* Search */}
       <div className="px-4 pb-2">
         <div className="relative">
           <svg
@@ -45,7 +43,6 @@ export function ToolList() {
         </div>
       </div>
 
-      {/* Tool list */}
       <div className="flex-1 overflow-y-auto scrollbar-thin">
         {filteredTools.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-6">

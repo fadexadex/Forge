@@ -1,5 +1,6 @@
 // Lightweight MCP client supporting SSE and Streamable HTTP transports
 import { classifyToolOutcome } from './toolOutcome.js';
+import { createChatLogEntry, getLogSourceLabel } from './chatRuntimeLog.js';
 
 let requestId = 0;
 const nextId = () => ++requestId;
@@ -22,6 +23,9 @@ export class McpClient {
     this.pendingRequests = new Map();
     this.abortController = null;
     this.connected = false;
+    this.logs = [];
+    this.logSubscribers = new Set();
+    this.logSource = getLogSourceLabel(this.url);
   }
 
   async connect() {
@@ -88,6 +92,7 @@ export class McpClient {
     });
 
     const serverInfo = initResult.result?.serverInfo || { name: 'Unknown', version: '0.0.0' };
+    this.logSource = serverInfo.name || this.logSource;
 
     // Step 3: Send initialized notification
     await this._sendNotification('notifications/initialized', {});
@@ -109,6 +114,7 @@ export class McpClient {
     });
 
     const serverInfo = initResult.result?.serverInfo || { name: 'Unknown', version: '0.0.0' };
+    this.logSource = serverInfo.name || this.logSource;
 
     // Send initialized notification
     await this._sendHTTPNotification('notifications/initialized', {});
@@ -195,15 +201,22 @@ export class McpClient {
   _sendRequest(method, params) {
     return new Promise((resolve, reject) => {
       const id = nextId();
+      this._pushLog({ dir: '->', type: method, status: 'info' });
 
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id);
+        this._pushLog({ dir: '!', type: method, status: 'error' });
         reject(new Error(`Request timed out: ${method}`));
       }, 30000);
 
       this.pendingRequests.set(id, {
         resolve: (data) => {
           clearTimeout(timeout);
+          this._pushLog({
+            dir: '<-',
+            type: method,
+            status: data?.error ? 'error' : 'success',
+          });
           resolve(data);
         },
       });
@@ -226,12 +239,14 @@ export class McpClient {
       }).catch((err) => {
         clearTimeout(timeout);
         this.pendingRequests.delete(id);
+        this._pushLog({ dir: '!', type: method, status: 'error' });
         reject(err);
       });
     });
   }
 
   _sendNotification(method, params) {
+    this._pushLog({ dir: '->', type: method, status: 'info' });
     const body = JSON.stringify({
       jsonrpc: '2.0',
       method,
@@ -246,12 +261,23 @@ export class McpClient {
       },
       body,
       signal: this.abortController?.signal,
+    }).then((response) => {
+      this._pushLog({
+        dir: '<-',
+        type: method,
+        status: response.ok ? 'success' : 'error',
+      });
+      return response;
+    }).catch((error) => {
+      this._pushLog({ dir: '!', type: method, status: 'error' });
+      throw error;
     });
   }
 
   // Streamable HTTP transport: send via POST, get response directly
   async _sendHTTPRequest(method, params) {
     const id = nextId();
+    this._pushLog({ dir: '->', type: method, status: 'info' });
     const body = JSON.stringify({
       jsonrpc: '2.0',
       id,
@@ -268,18 +294,35 @@ export class McpClient {
       body,
       signal: this.abortController?.signal,
     });
+    try {
+      const contentType = response.headers.get('content-type') || '';
 
-    const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('text/event-stream')) {
+        // Parse SSE stream for response
+        const payload = await this._parseSSEResponse(response, id);
+        this._pushLog({
+          dir: '<-',
+          type: method,
+          status: payload?.error || !response.ok ? 'error' : 'success',
+        });
+        return payload;
+      }
 
-    if (contentType.includes('text/event-stream')) {
-      // Parse SSE stream for response
-      return this._parseSSEResponse(response, id);
-    } else {
-      return response.json();
+      const payload = await response.json();
+      this._pushLog({
+        dir: '<-',
+        type: method,
+        status: payload?.error || !response.ok ? 'error' : 'success',
+      });
+      return payload;
+    } catch (error) {
+      this._pushLog({ dir: '!', type: method, status: 'error' });
+      throw error;
     }
   }
 
   async _sendHTTPNotification(method, params) {
+    this._pushLog({ dir: '->', type: method, status: 'info' });
     const body = JSON.stringify({
       jsonrpc: '2.0',
       method,
@@ -294,6 +337,16 @@ export class McpClient {
       },
       body,
       signal: this.abortController?.signal,
+    }).then((response) => {
+      this._pushLog({
+        dir: '<-',
+        type: method,
+        status: response.ok ? 'success' : 'error',
+      });
+      return response;
+    }).catch((error) => {
+      this._pushLog({ dir: '!', type: method, status: 'error' });
+      throw error;
     });
   }
 
@@ -339,5 +392,25 @@ export class McpClient {
     }
     this.pendingRequests.clear();
     this.messageEndpoint = null;
+  }
+
+  getLogs() {
+    return [...this.logs];
+  }
+
+  subscribeLogs(listener) {
+    this.logSubscribers.add(listener);
+    return () => this.logSubscribers.delete(listener);
+  }
+
+  _pushLog({ dir, type, status }) {
+    const entry = createChatLogEntry({
+      dir,
+      type,
+      status,
+      source: this.logSource,
+    });
+    this.logs = [...this.logs, entry];
+    this.logSubscribers.forEach((listener) => listener(entry, this.getLogs()));
   }
 }

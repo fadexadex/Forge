@@ -418,7 +418,7 @@ export const useTestStore = create((set, get) => ({
     });
   },
 
-  selectTool: (name) => {
+  selectTool: (name, options = {}) => {
     const tool = get().tools.find((t) => t.name === name);
     const skeleton = {};
     if (tool?.inputSchema?.properties) {
@@ -428,6 +428,7 @@ export const useTestStore = create((set, get) => ({
     }
     set({
       selectedToolName: name,
+      selectedPrimitiveType: options.navigate === false ? get().selectedPrimitiveType : 'tools',
       inputValues: skeleton,
       inputMode: 'form',
       rawJsonInput: JSON.stringify(skeleton, null, 2),

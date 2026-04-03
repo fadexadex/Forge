@@ -1,19 +1,13 @@
-import { useTestStore } from '../../stores/testStore';
 import { useState } from 'react';
 
-export function LogBusPanel({ isCollapsed, onToggle }) {
-  // Using mock logs for now
-  const [logs] = useState([
-    { id: 1, dir: '<- res', type: 'result', source: 'paystack', time: '12:44:23 PM', status: 'success' },
-    { id: 2, dir: 'req ->', type: 'tools/list', source: 'paystack', time: '12:44:23 PM', status: 'info' },
-    { id: 3, dir: '<- res', type: 'result', source: 'paystack', time: '12:44:20 PM', status: 'success' },
-    { id: 4, dir: 'req ->', type: 'tools/list', source: 'paystack', time: '12:44:20 PM', status: 'info' },
-    { id: 5, dir: '!', type: 'error', source: 'paystack', time: '12:44:20 PM', status: 'error' },
-    { id: 6, dir: 'req ->', type: 'logging/setLevel', source: 'paystack', time: '12:44:20 PM', status: 'info' },
-    { id: 7, dir: 'req ->', type: 'notifications/initialized', source: 'paystack', time: '12:44:20 PM', status: 'info' },
-    { id: 8, dir: '<- res', type: 'result', source: 'paystack', time: '12:44:20 PM', status: 'success' },
-    { id: 9, dir: 'req ->', type: 'initialize', source: 'paystack', time: '12:44:20 PM', status: 'info' },
-  ]);
+export function LogBusPanel({ isCollapsed, onToggle, logs = [] }) {
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredLogs = logs.filter((log) => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    return `${log.type} ${log.source}`.toLowerCase().includes(query);
+  });
 
   if (isCollapsed) {
     return (
@@ -50,11 +44,13 @@ export function LogBusPanel({ isCollapsed, onToggle }) {
           <input
             type="text"
             placeholder="Search logs"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-8 pr-3 py-1.5 text-xs bg-neutral-100 border border-transparent rounded-md focus:bg-white focus:border-border focus:outline-none transition-colors"
           />
         </div>
         <div className="text-xs text-muted-foreground whitespace-nowrap px-1">
-          {logs.length} / {logs.length}
+          {filteredLogs.length} / {logs.length}
         </div>
         <button className="p-1.5 text-muted-foreground hover:bg-neutral-100 rounded">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
@@ -62,16 +58,21 @@ export function LogBusPanel({ isCollapsed, onToggle }) {
       </div>
       
       <div className="flex-1 overflow-y-auto font-mono text-[11px]">
-        {logs.map(log => (
+        {filteredLogs.length === 0 && (
+          <div className="px-4 py-4 text-neutral-400 italic">
+            {logs.length === 0 ? 'No activity yet.' : 'No logs match your search.'}
+          </div>
+        )}
+        {filteredLogs.map(log => (
           <div key={log.id} className="flex items-center gap-2 px-3 py-2 border-b border-neutral-100 hover:bg-neutral-50 cursor-pointer group">
-            <div className={`shrink-0 w-12 ${log.status === 'error' ? 'text-red-500' : 'text-green-600'}`}>
+            <div className={`shrink-0 w-12 ${log.status === 'error' ? 'text-red-500' : log.status === 'success' ? 'text-green-600' : 'text-neutral-500'}`}>
               {log.dir}
             </div>
             <div className={`flex-1 truncate ${log.status === 'error' ? 'text-red-500' : 'text-neutral-700'}`}>
               {log.type}
             </div>
             <div className="shrink-0 text-muted-foreground text-[10px]">
-              {log.source} {log.time}
+              {log.source} {new Date(log.at).toLocaleTimeString()}
             </div>
           </div>
         ))}

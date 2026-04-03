@@ -3,7 +3,7 @@
  * Handles the postMessage channel between the host and embedded iframe widgets.
  */
 import { useEffect } from 'react';
-import { classifyToolOutcome, getToolErrorMessage } from '../../../utils/toolOutcome';
+import { classifyToolOutcome, getToolErrorMessage } from '../../../utils/toolOutcome.js';
 
 function downloadBlob(data, filename, mimeType) {
   const blob = new Blob([data], { type: mimeType || 'application/octet-stream' });

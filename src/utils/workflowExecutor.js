@@ -1,4 +1,4 @@
-import { WORKFLOW_NODE_TYPES } from './constants';
+import { WORKFLOW_NODE_TYPES } from './constants.js';
 
 function evaluateExpression(expr, data) {
   try {
