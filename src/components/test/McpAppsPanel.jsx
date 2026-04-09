@@ -61,13 +61,6 @@ const ChevronRightIcon = () => (
   </svg>
 );
 
-const ArrowLeftIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M19 12H5" />
-    <polyline points="12 19 5 12 12 5" />
-  </svg>
-);
-
 const requiredBadgeClassName = 'rounded bg-orange-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-orange-700';
 
 function parseParamValue(rawValue, type = 'string') {
@@ -109,25 +102,90 @@ function buildArgs(properties = {}, rawParams = {}) {
   return args;
 }
 
-function CollapsibleSection({ title, collapsed, onToggle, children, defaultOpenLabel = 'Hide', defaultClosedLabel = 'Show' }) {
-  return (
-    <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-neutral-50"
-      >
-        <span className="text-[12px] font-semibold uppercase tracking-[0.18em] text-neutral-500">{title}</span>
-        <span className="flex items-center gap-2 text-[11px] font-medium text-neutral-500">
-          {collapsed ? defaultClosedLabel : defaultOpenLabel}
-          <span className={`transition-transform ${collapsed ? '' : 'rotate-90'}`}>
-            <ChevronRightIcon />
-          </span>
+function JsonViewer({ data, isLast = true, name = null }) {
+  const isObject = data !== null && typeof data === 'object';
+  const isArray = Array.isArray(data);
+
+  if (!isObject) {
+    let valueColor = 'text-neutral-600';
+    if (typeof data === 'string') valueColor = 'text-emerald-600';
+    else if (typeof data === 'number') valueColor = 'text-amber-600';
+    else if (typeof data === 'boolean') valueColor = 'text-rose-500';
+    else if (data === null) valueColor = 'text-neutral-400';
+
+    return (
+      <div className="font-mono text-[11px] leading-relaxed">
+        {name && <span className="text-sky-600">&quot;{name}&quot;</span>}
+        {name && <span className="text-neutral-400">: </span>}
+        <span className={valueColor}>
+          {typeof data === 'string' ? <>&quot;{data}&quot;</> : String(data)}
         </span>
-      </button>
-      {!collapsed ? (
-        <div className="border-t border-neutral-200 px-4 py-4">{children}</div>
-      ) : null}
+        {!isLast && <span className="text-neutral-400">,</span>}
+      </div>
+    );
+  }
+
+  const keys = Object.keys(data);
+  const isEmpty = keys.length === 0;
+  const openBracket = isArray ? '[' : '{';
+  const closeBracket = isArray ? ']' : '}';
+
+  if (isEmpty) {
+    return (
+      <div className="font-mono text-[11px] leading-relaxed">
+        {name && <span className="text-sky-600">&quot;{name}&quot;</span>}
+        {name && <span className="text-neutral-400">: </span>}
+        <span className="text-neutral-400">{openBracket}{closeBracket}</span>
+        {!isLast && <span className="text-neutral-400">,</span>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="font-mono text-[11px] leading-relaxed">
+      <div className="flex items-start">
+        <div className="flex-1">
+          {name && <span className="text-sky-600">&quot;{name}&quot;</span>}
+          {name && <span className="text-neutral-400">: </span>}
+          <span className="text-neutral-400">{openBracket}</span>
+        </div>
+      </div>
+      <>
+        <div className="mb-0.5 ml-[22px] mt-0.5">
+          {keys.map((key, index) => (
+            <JsonViewer
+              key={key}
+              name={isArray ? null : key}
+              data={data[key]}
+              isLast={index === keys.length - 1}
+            />
+          ))}
+        </div>
+        <div className="ml-1.5">
+          <span className="text-neutral-400">{closeBracket}</span>
+          {!isLast && <span className="text-neutral-400">,</span>}
+        </div>
+      </>
+    </div>
+  );
+}
+
+const ChevronDownIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="6 9 12 15 18 9" />
+  </svg>
+);
+
+function CollapsibleHeader({ title, isExpanded, onClick }) {
+  return (
+    <div 
+      className="mb-2 flex cursor-pointer items-center justify-between"
+      onClick={onClick}
+    >
+      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">{title}</h3>
+      <div className={`text-neutral-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+        <ChevronDownIcon />
+      </div>
     </div>
   );
 }
@@ -142,13 +200,15 @@ export function McpAppsPanel() {
   const [selectedTool, setSelectedTool] = useState(null);
   const [toolParams, setToolParams] = useState({});
   const [isRunning, setIsRunning] = useState(false);
-  const [descCollapsed, setDescCollapsed] = useState(false);
-  const [schemaCollapsed, setSchemaCollapsed] = useState(true);
-  const [paramsCollapsed, setParamsCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(360);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [viewport, setViewport] = useState('desktop');
   const [runError, setRunError] = useState('');
+  
+  const [isToolSwitcherOpen, setIsToolSwitcherOpen] = useState(false);
+  const [descCollapsed, setDescCollapsed] = useState(false);
+  const [schemaCollapsed, setSchemaCollapsed] = useState(true);
+  const [paramsCollapsed, setParamsCollapsed] = useState(false);
 
   const scrollRef = useRef(null);
   const sidebarIsResizing = useRef(false);
@@ -246,6 +306,7 @@ export function McpAppsPanel() {
     setToolParams({});
     setRunError('');
     setIsRunning(false);
+    setIsToolSwitcherOpen(false);
     setDescCollapsed(false);
     setSchemaCollapsed(true);
     setParamsCollapsed(false);
@@ -256,9 +317,7 @@ export function McpAppsPanel() {
     setToolParams({});
     setRunError('');
     setIsRunning(false);
-    setDescCollapsed(false);
-    setSchemaCollapsed(true);
-    setParamsCollapsed(false);
+    setIsToolSwitcherOpen(false);
   };
 
   const handleRunTool = async () => {
@@ -304,36 +363,22 @@ export function McpAppsPanel() {
         }}
         className="relative z-20 flex shrink-0 flex-col border-r border-neutral-200 bg-white"
       >
-        <div className="border-b border-neutral-200 bg-white px-6 py-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <div className={`mt-1 h-2.5 w-2.5 rounded-full ${(client || isBuilder) ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.35)]' : 'bg-neutral-300'}`} />
-                <div>
-                  <div className="truncate text-[14px] font-semibold tracking-tight text-neutral-900">
-                    {serverInfo?.name || 'MCP Apps'}
-                  </div>
-                  <div className="truncate text-[11px] text-neutral-500">
-                    {isBuilder ? 'Builder tools in app view' : 'App canvas and tool fallback view'}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-neutral-500">
-                Apps
-              </span>
-              <button
-                type="button"
-                onClick={() => setIsSidebarCollapsed(true)}
-                className="rounded-md border border-neutral-200 p-1.5 text-neutral-500 transition-colors hover:bg-neutral-50 hover:text-neutral-800"
-                title="Collapse sidebar"
-              >
-                <ChevronLeftIcon />
-              </button>
-            </div>
+        <div className="border-b border-neutral-200 bg-white px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className={`h-2 w-2 rounded-full ${(client || isBuilder) ? 'bg-emerald-500' : 'bg-neutral-300'}`} />
+            <span className="text-xs font-medium uppercase tracking-wider text-neutral-500">Tools</span>
+            <span className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-[11px] font-medium text-neutral-500">
+              {filteredTools.length}
+            </span>
           </div>
+          <button
+            type="button"
+            onClick={() => setIsSidebarCollapsed(true)}
+            className="rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800"
+            title="Collapse sidebar"
+          >
+            <ChevronLeftIcon />
+          </button>
         </div>
 
         {apiKeyMissing ? (
@@ -351,208 +396,220 @@ export function McpAppsPanel() {
           </div>
         ) : null}
 
-        {selectedTool ? (
-          <>
-            <div className="flex items-center gap-3 border-b border-neutral-100 px-6 py-4">
-              <button
-                type="button"
-                onClick={resetDetailView}
-                className="inline-flex items-center gap-2 rounded-md border border-neutral-200 px-3 py-2 text-[12px] font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
-              >
-                <ArrowLeftIcon />
-                Back
-              </button>
-              <span className="truncate font-mono text-[13px] font-semibold text-neutral-900">
-                {selectedTool.name}
-              </span>
-            </div>
+        <div className="border-b border-neutral-200 px-4 py-3 shrink-0">
+          <div className="relative">
+            <span className="absolute inset-y-0 left-2.5 flex items-center text-neutral-400">
+              <SearchIcon />
+            </span>
+            <input
+              type="text"
+              placeholder="Search tools..."
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              className="h-8 w-full rounded border border-neutral-200 bg-white pl-8 pr-3 text-xs text-neutral-900 shadow-sm placeholder:text-neutral-400 focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-400"
+            />
+          </div>
+        </div>
 
-            <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-              <CollapsibleSection
-                title="Description"
-                collapsed={descCollapsed}
-                onToggle={() => setDescCollapsed((value) => !value)}
-              >
-                <p className="text-[13px] leading-relaxed text-neutral-600">
-                  {selectedTool.description || 'No description provided for this tool yet.'}
-                </p>
-              </CollapsibleSection>
-
-              <CollapsibleSection
-                title="Input Schema"
-                collapsed={schemaCollapsed}
-                onToggle={() => setSchemaCollapsed((value) => !value)}
-              >
-                <pre className="overflow-x-auto rounded-lg bg-neutral-950 p-4 text-[11px] leading-relaxed text-neutral-100">
-                  {JSON.stringify(selectedTool.inputSchema || { type: 'object', properties: {} }, null, 2)}
-                </pre>
-              </CollapsibleSection>
-
-              <CollapsibleSection
-                title="Parameters"
-                collapsed={paramsCollapsed}
-                onToggle={() => setParamsCollapsed((value) => !value)}
-              >
-                <div className="space-y-4">
-                  {selectedToolProperties.length > 0 ? (
-                    selectedToolProperties.map(([name, schema]) => {
-                      const type = schema?.type || 'string';
-                      const isRequired = requiredParams.includes(name);
-                      const value = toolParams[name] ?? '';
-
-                      return (
-                        <div key={name} className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <label className="font-mono text-[12px] font-semibold text-neutral-800" htmlFor={`tool-param-${name}`}>
-                              {name}
-                            </label>
-                            {isRequired ? <span className={requiredBadgeClassName}>Required</span> : null}
-                            <span className="text-[10px] uppercase tracking-wide text-neutral-400">{type}</span>
-                          </div>
-
-                          {schema?.description ? (
-                            <p className="text-[12px] leading-relaxed text-neutral-500">{schema.description}</p>
-                          ) : null}
-
-                          {type === 'object' || type === 'array' ? (
-                            <textarea
-                              id={`tool-param-${name}`}
-                              rows="3"
-                              value={value}
-                              onChange={(event) => setToolParams((prev) => ({ ...prev, [name]: event.target.value }))}
-                              placeholder={type === 'array' ? '[...]' : '{...}'}
-                              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[12px] text-neutral-800 shadow-sm outline-none transition focus:border-neutral-400 focus:ring-2 focus:ring-neutral-900/5"
-                            />
-                          ) : type === 'boolean' ? (
-                            <select
-                              id={`tool-param-${name}`}
-                              value={value}
-                              onChange={(event) => setToolParams((prev) => ({ ...prev, [name]: event.target.value }))}
-                              className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[12px] text-neutral-800 shadow-sm outline-none transition focus:border-neutral-400 focus:ring-2 focus:ring-neutral-900/5"
-                            >
-                              <option value="">Select value</option>
-                              <option value="true">true</option>
-                              <option value="false">false</option>
-                            </select>
-                          ) : (
-                            <input
-                              id={`tool-param-${name}`}
-                              type={type === 'number' || type === 'integer' ? 'number' : 'text'}
-                              inputMode={type === 'number' || type === 'integer' ? 'decimal' : undefined}
-                              value={value}
-                              onChange={(event) => setToolParams((prev) => ({ ...prev, [name]: event.target.value }))}
-                              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[12px] text-neutral-800 shadow-sm outline-none transition focus:border-neutral-400 focus:ring-2 focus:ring-neutral-900/5"
-                            />
-                          )}
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="rounded-lg border border-dashed border-neutral-200 bg-neutral-50 px-4 py-4 text-[12px] italic text-neutral-500">
-                      This tool does not require any parameters.
+        <div className="flex-1 overflow-y-auto">
+          {selectedTool ? (
+            <div className="flex h-full flex-col">
+              <div className="relative border-b border-neutral-100 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setIsToolSwitcherOpen(!isToolSwitcherOpen)}
+                    className="flex items-center gap-2 rounded-md hover:bg-neutral-50 px-2 py-1 -ml-2 transition-colors"
+                  >
+                    <span className="truncate font-mono text-[13px] font-medium text-neutral-900">
+                      {selectedTool.name}
+                    </span>
+                    <div className="text-neutral-400">
+                      <ChevronDownIcon />
                     </div>
-                  )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetDetailView}
+                    className="text-[11px] font-medium text-neutral-500 hover:text-neutral-900 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
 
-                  {runError ? (
-                    <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
-                      {runError}
-                    </div>
-                  ) : null}
+                {isToolSwitcherOpen && (
+                  <div className="absolute left-4 right-4 top-full mt-1 z-50 max-h-[300px] overflow-y-auto rounded-md border border-neutral-200 bg-white shadow-lg">
+                    {filteredTools.map((t) => (
+                      <button
+                        key={t.name}
+                        className={`w-full text-left px-4 py-2 font-mono text-[12px] hover:bg-neutral-50 transition-colors ${t.name === selectedTool.name ? 'bg-neutral-50 font-medium text-neutral-900' : 'text-neutral-600'}`}
+                        onClick={() => openToolDetail(t)}
+                      >
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-                  <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <div className="text-[12px] font-semibold text-neutral-800">Run this tool directly</div>
-                        <div className="text-[12px] text-neutral-500">
-                          Results will appear in the conversation canvas without invoking the assistant.
+              <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5">
+                {selectedTool.description ? (
+                  <div>
+                    <CollapsibleHeader 
+                      title="Description" 
+                      isExpanded={!descCollapsed} 
+                      onClick={() => setDescCollapsed(!descCollapsed)} 
+                    />
+                    {!descCollapsed && (
+                      <p className="text-[13px] leading-relaxed text-neutral-700">
+                        {selectedTool.description}
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+
+                {selectedTool.inputSchema ? (
+                  <div>
+                    <CollapsibleHeader 
+                      title="Input Schema" 
+                      isExpanded={!schemaCollapsed} 
+                      onClick={() => setSchemaCollapsed(!schemaCollapsed)} 
+                    />
+                    {!schemaCollapsed && (
+                      <div className="overflow-hidden rounded-md border border-neutral-200 bg-neutral-50">
+                        <div className="overflow-x-auto p-3">
+                          <JsonViewer data={selectedTool.inputSchema} />
                         </div>
                       </div>
-
-                      <button
-                        type="button"
-                        onClick={handleRunTool}
-                        disabled={!canRun}
-                        className={`rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors ${
-                          canRun
-                            ? 'bg-neutral-900 text-white hover:bg-neutral-800'
-                            : 'cursor-not-allowed bg-neutral-200 text-neutral-400'
-                        }`}
-                      >
-                        {isRunning ? 'Running...' : 'Run Tool'}
-                      </button>
-                    </div>
+                    )}
                   </div>
+                ) : null}
 
+                {selectedToolProperties.length > 0 ? (
+                  <div>
+                    <CollapsibleHeader 
+                      title="Parameters" 
+                      isExpanded={!paramsCollapsed} 
+                      onClick={() => setParamsCollapsed(!paramsCollapsed)} 
+                    />
+                    {!paramsCollapsed && (
+                      <div className="space-y-4">
+                        {selectedToolProperties.map(([name, schema]) => {
+                          const type = schema?.type || 'string';
+                          const isRequired = requiredParams.includes(name);
+                          const value = toolParams[name] ?? '';
+
+                          return (
+                            <div key={name} className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <label className="font-mono text-[12px] font-medium text-neutral-800" htmlFor={`tool-param-${name}`}>
+                                  {name}
+                                </label>
+                                {isRequired ? <span className={requiredBadgeClassName}>Required</span> : null}
+                                <span className="text-[10px] uppercase tracking-wide text-neutral-400">{type}</span>
+                              </div>
+
+                              {schema?.description ? (
+                                <p className="text-[12px] leading-relaxed text-neutral-500">{schema.description}</p>
+                              ) : null}
+
+                              {type === 'object' || type === 'array' ? (
+                                <textarea
+                                  id={`tool-param-${name}`}
+                                  rows="3"
+                                  value={value}
+                                  onChange={(event) => setToolParams((prev) => ({ ...prev, [name]: event.target.value }))}
+                                  placeholder={type === 'array' ? '[...]' : '{...}'}
+                                  className="w-full rounded-md border border-neutral-200 px-3 py-2 text-[12px] text-neutral-800 shadow-sm outline-none transition focus:border-neutral-400 focus:ring-1 focus:ring-neutral-400"
+                                />
+                              ) : type === 'boolean' ? (
+                                <select
+                                  id={`tool-param-${name}`}
+                                  value={value}
+                                  onChange={(event) => setToolParams((prev) => ({ ...prev, [name]: event.target.value }))}
+                                  className="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-[12px] text-neutral-800 shadow-sm outline-none transition focus:border-neutral-400 focus:ring-1 focus:ring-neutral-400"
+                                >
+                                  <option value="">Select value</option>
+                                  <option value="true">true</option>
+                                  <option value="false">false</option>
+                                </select>
+                              ) : (
+                                <input
+                                  id={`tool-param-${name}`}
+                                  type={type === 'number' || type === 'integer' ? 'number' : 'text'}
+                                  inputMode={type === 'number' || type === 'integer' ? 'decimal' : undefined}
+                                  value={value}
+                                  onChange={(event) => setToolParams((prev) => ({ ...prev, [name]: event.target.value }))}
+                                  className="w-full rounded-md border border-neutral-200 px-3 py-2 text-[12px] text-neutral-800 shadow-sm outline-none transition focus:border-neutral-400 focus:ring-1 focus:ring-neutral-400"
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+
+                {runError ? (
+                  <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+                    {runError}
+                  </div>
+                ) : null}
+
+                <div className="pt-2 border-t border-neutral-200/60 flex flex-wrap items-center justify-between gap-3">
                   <button
                     type="button"
                     onClick={() => selectTool(selectedTool.name)}
                     className="inline-flex items-center rounded-md border border-neutral-200 bg-white px-3 py-2 text-[12px] font-medium text-neutral-700 shadow-sm hover:bg-neutral-50"
                   >
-                    Open in main Tools tab
+                    Open in main tab
                   </button>
-                </div>
-              </CollapsibleSection>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="px-6 pt-4">
-              <div className="mb-2 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Tools</span>
-                  <span className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-[11px] font-medium text-neutral-500">
-                    {filteredTools.length}
-                  </span>
-                </div>
-              </div>
-              <div className="relative pb-4">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400">
-                  <SearchIcon />
-                </span>
-                <input
-                  type="text"
-                  placeholder="Search tools..."
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  className="h-8 w-full rounded-md border-none bg-neutral-100 pl-8 pr-3 text-xs text-neutral-900 shadow-none placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900"
-                />
-              </div>
-            </div>
 
-            <div className="flex-1 overflow-y-auto">
-              {filteredTools.length === 0 ? (
-                <div className="px-6 py-8 text-center text-[12px] italic text-neutral-400">
-                  {(client || isBuilder) ? 'No tools found.' : 'Connect to a server to see tools.'}
-                </div>
-              ) : (
-                filteredTools.map((tool) => (
                   <button
-                    key={tool.name}
                     type="button"
-                    onClick={() => openToolDetail(tool)}
-                    className="flex w-full items-start gap-3 border-b border-neutral-100 px-6 py-4 text-left transition-colors hover:bg-neutral-50"
+                    onClick={handleRunTool}
+                    disabled={!canRun}
+                    className={`rounded-md px-4 py-2 text-[12px] font-medium transition-colors ${
+                      canRun
+                        ? 'bg-neutral-900 text-white hover:bg-neutral-800'
+                        : 'cursor-not-allowed bg-neutral-200 text-neutral-400'
+                    }`}
                   >
-                    <div className="mt-0.5 text-neutral-400">
-                      <ChevronRightIcon />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="mb-1 truncate font-mono text-[13px] font-medium tracking-tight text-neutral-900">
-                        {tool.name}
-                      </div>
-                      <div className="text-[12px] leading-relaxed text-neutral-500">
-                        {tool.description || 'No description provided for this tool yet.'}
-                      </div>
-                    </div>
+                    {isRunning ? 'Running...' : 'Run Tool'}
                   </button>
-                ))
-              )}
+                </div>
+              </div>
             </div>
-          </>
-        )}
+          ) : filteredTools.length === 0 ? (
+            <div className="px-4 py-8 text-center text-[12px] italic text-neutral-400">
+              {(client || isBuilder) ? 'No tools found.' : 'Connect to a server to see tools.'}
+            </div>
+          ) : (
+            filteredTools.map((tool) => (
+              <div key={tool.name} className="border-b border-neutral-100">
+                <button
+                  type="button"
+                  onClick={() => openToolDetail(tool)}
+                  className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-neutral-50"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-1 truncate font-mono text-[13px] font-medium tracking-tight text-neutral-900">
+                      {tool.name}
+                    </div>
+                    <div className="text-[12px] leading-relaxed text-neutral-500 line-clamp-2">
+                      {tool.description || 'No description provided for this tool yet.'}
+                    </div>
+                  </div>
+                </button>
+              </div>
+            ))
+          )}
+        </div>
 
         <div
           onClick={() => setIsLogsCollapsed((value) => !value)}
-          className="flex cursor-pointer items-center justify-between border-t border-neutral-200 bg-white px-5 py-3 transition-colors hover:bg-neutral-50"
+          className="flex cursor-pointer items-center justify-between border-t border-neutral-200 bg-white px-4 py-3 transition-colors hover:bg-neutral-50"
         >
           <div className="flex items-center gap-2">
             <div className={`text-neutral-400 transition-transform duration-200 ${isLogsCollapsed ? '' : 'rotate-90'}`}>
@@ -563,7 +620,7 @@ export function McpAppsPanel() {
           <span className="text-[11px] font-mono text-neutral-400">{logs.length}</span>
         </div>
 
-        <div className={`shrink-0 overflow-hidden bg-white transition-all duration-300 ease-in-out ${isLogsCollapsed ? 'h-0' : 'h-48'}`}>
+        <div className={`shrink-0 bg-white transition-all duration-300 ease-in-out flex flex-col ${isLogsCollapsed ? 'h-0 overflow-hidden' : 'h-48'}`}>
           <div className="flex-1 overflow-y-auto py-1">
             {logs.length === 0 ? (
               <div className="px-5 py-4 text-[11px] italic text-neutral-400">No activity yet.</div>
