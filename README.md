@@ -7,8 +7,8 @@
 <h4 align="center">A visual Model Context Protocol (MCP) Creation and Testing Suite.</h4>
 
 <p align="center">
-  <video src="./images/demo.mp4" width="800" autoplay muted loop playsinline></video>
-</p>
+  <video src="https://github.com/fadexadex/Forge/raw/main/images/demo.mp4" width="800" autoplay muted loop playsinline></video>
+</p>  
 
 ---
 
