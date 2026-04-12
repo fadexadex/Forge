@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { useMcpStore } from './mcpStore';
+import { useEvaluationStore } from './evaluationStore';
 import { McpClient } from '../utils/mcpClient';
 import { executeWorkflow } from '../utils/workflowExecutor';
 import { WORKFLOW_NODE_TYPES } from '../utils/constants';
@@ -175,7 +176,7 @@ export const useTestStore = create((set, get) => ({
   selectedBuilderServerId: null, // Server ID selected for builder preview
 
   // Primitive type selection (sub-tabs)
-  selectedPrimitiveType: 'tools', // 'tools' | 'resources' | 'prompts'
+  selectedPrimitiveType: 'tools', // 'tools' | 'resources' | 'prompts' | 'chat' | 'apps' | 'evaluations'
 
   // Tools
   tools: [],
@@ -351,6 +352,20 @@ export const useTestStore = create((set, get) => ({
       selectedPromptName: null,
       searchQuery: '',
     });
+
+    void useEvaluationStore.getState().syncConnectionContext({
+      testMode: 'builder',
+      serverUrl: '',
+      selectedBuilderServerId,
+      serverInfo: {
+        name: `${builderServer.name} (Builder)`,
+        version: 'dev',
+        protocolVersion: '2024-11-05',
+      },
+      tools: builderTools,
+      resources: builderResources,
+      prompts: builderPrompts,
+    });
   },
 
   connect: async () => {
@@ -381,6 +396,16 @@ export const useTestStore = create((set, get) => ({
         resources,
         prompts: [],
         connectionError: null,
+      });
+
+      void useEvaluationStore.getState().syncConnectionContext({
+        testMode: 'external',
+        serverUrl,
+        selectedBuilderServerId: null,
+        serverInfo,
+        tools,
+        resources,
+        prompts: [],
       });
     } catch (err) {
       set({
@@ -416,6 +441,7 @@ export const useTestStore = create((set, get) => ({
       lastPromptResponse: null,
       history: [],
     });
+    useEvaluationStore.getState().setCurrentContext(null);
   },
 
   selectTool: (name, options = {}) => {
