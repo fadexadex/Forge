@@ -1,6 +1,6 @@
 import { Button } from '../../ui/Button';
 import { useEvaluationStore } from '../../../stores/evaluationStore';
-import { formatDuration } from '../../../utils/evaluation/helpers.js';
+import { formatDuration, getEvaluationDisplayTags } from '../../../utils/evaluation/helpers.js';
 
 function badgeClasses(kind = 'default') {
   switch (kind) {
@@ -23,6 +23,7 @@ export function EvaluationScenarioList() {
     generationByScope,
     selectedScenarioIdByScope,
     createScenario,
+    deleteScenario,
     selectScenario,
   } = useEvaluationStore();
 
@@ -77,65 +78,63 @@ export function EvaluationScenarioList() {
           scenarios.map((scenario) => {
             const latestRun = runsByScenario[scenario.id]?.[0];
             const isSelected = selectedScenarioId === scenario.id;
+            const displayTags = getEvaluationDisplayTags(scenario);
 
             return (
-              <button
+              <div
                 key={scenario.id}
-                type="button"
-                onClick={() => selectScenario(scenario.id)}
                 data-testid={`evaluation-scenario-item-${scenario.id}`}
-                className={`w-full border-b border-neutral-100 px-4 py-3 text-left transition-colors ${
+                className={`border-b border-neutral-100 px-4 py-3 transition-colors ${
                   isSelected ? 'bg-neutral-100' : 'hover:bg-neutral-50'
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => selectScenario(scenario.id)}
+                    className="min-w-0 flex-1 text-left"
+                  >
                     <div className="truncate text-sm font-medium text-neutral-900">
                       {scenario.title}
                     </div>
                     <div className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-neutral-500">
                       {scenario.scenarioText}
                     </div>
-                  </div>
+                  </button>
 
-                  {latestRun ? (
-                    <span
-                      className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                        latestRun.result === 'passed'
-                          ? badgeClasses('success')
-                          : badgeClasses('error')
-                      }`}
+                  <div className="flex items-center gap-2">
+                    {latestRun ? (
+                      <span
+                        className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                          latestRun.result === 'passed'
+                            ? badgeClasses('success')
+                            : badgeClasses('error')
+                        }`}
+                      >
+                        {latestRun.result === 'passed' ? 'Pass' : 'Fail'}
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      aria-label={`Delete ${scenario.title}`}
+                      onClick={() => deleteScenario(scenario.id)}
+                      className="text-xs text-neutral-400 transition-colors hover:text-red-600"
                     >
-                      {latestRun.result === 'passed' ? 'Pass' : 'Fail'}
-                    </span>
-                  ) : null}
+                      Delete
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  <span
-                    data-testid={scenario.mode === 'negative' ? 'evaluation-negative-badge' : undefined}
-                    className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
-                      scenario.mode === 'negative'
-                        ? badgeClasses('negative')
-                        : badgeClasses('default')
-                    }`}
-                  >
-                    {scenario.mode === 'negative' ? 'NEG' : scenario.difficulty}
-                  </span>
-
-                  {scenario.source !== 'user' ? (
-                    <span
-                      data-testid="evaluation-generated-badge"
-                      className="rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[10px] font-medium text-neutral-600"
-                    >
-                      {scenario.source === 'generated-edited' ? 'generated-edited' : 'generated'}
-                    </span>
-                  ) : null}
-
-                  {scenario.tags.slice(0, 3).map((tag) => (
+                  {displayTags.map((tag) => (
                     <span
                       key={`${scenario.id}-${tag}`}
-                      className="rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[10px] font-medium text-neutral-500"
+                      data-testid={tag === 'NEG' ? 'evaluation-negative-badge' : tag === 'Generated' ? 'evaluation-generated-badge' : undefined}
+                      className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                        tag === 'NEG'
+                          ? badgeClasses('negative')
+                          : 'border-neutral-200 bg-white text-neutral-500'
+                      }`}
                     >
                       {tag}
                     </span>
@@ -144,12 +143,12 @@ export function EvaluationScenarioList() {
 
                 {latestRun ? (
                   <div className="mt-2 flex items-center gap-3 text-[11px] text-neutral-500">
-                    <span>ATS {Math.round((latestRun.trajectory?.score || 0) * 100)}%</span>
+                    <span>Path {Math.round((latestRun.trajectory?.score || 0) * 100)}%</span>
                     <span>{latestRun.actualToolCalls?.length || 0} calls</span>
                     <span>{formatDuration(latestRun.durationMs)}</span>
                   </div>
                 ) : null}
-              </button>
+              </div>
             );
           })
         )}

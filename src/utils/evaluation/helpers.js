@@ -167,3 +167,102 @@ export function titleFromToolName(name = '') {
     .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
     .join(' ');
 }
+
+export function inferToolPurpose(toolName = '') {
+  const normalized = toolName.toLowerCase();
+
+  if (/select|choose|pick|filter|set/.test(normalized)) return 'input';
+  if (/get|fetch|list|search|lookup|query|read/.test(normalized)) return 'data';
+  if (/transform|aggregate|summarize|group|analy[sz]e|compute/.test(normalized)) return 'transform';
+  if (/visual|chart|graph|dashboard|plot|widget|show/.test(normalized)) return 'visualize';
+  if (/export|pdf|download|report|share/.test(normalized)) return 'export';
+  return 'other';
+}
+
+export function getMatchModeDescription(mode = 'subset') {
+  switch (mode) {
+    case 'exact':
+      return 'Every field and value must match exactly.';
+    case 'keys-only':
+      return 'Only the presence of these fields matters.';
+    case 'subset':
+    default:
+      return 'The listed fields must match, extra fields are allowed.';
+  }
+}
+
+function defaultValueForSchema(schema = {}) {
+  if (schema.default !== undefined) {
+    return schema.default;
+  }
+
+  if (Array.isArray(schema.enum) && schema.enum.length > 0) {
+    return schema.enum[0];
+  }
+
+  switch (schema.type) {
+    case 'boolean':
+      return false;
+    case 'integer':
+    case 'number':
+      return '';
+    case 'array':
+      return [];
+    case 'object':
+      return buildArgsFromSchema(schema);
+    case 'string':
+    default:
+      return '';
+  }
+}
+
+export function buildArgsFromSchema(schema = {}, seed = {}) {
+  if (!schema || typeof schema !== 'object') {
+    return seed || {};
+  }
+
+  const properties = schema.properties || {};
+  const next = {};
+
+  Object.entries(properties).forEach(([key, value]) => {
+    if (seed && Object.prototype.hasOwnProperty.call(seed, key)) {
+      next[key] = seed[key];
+      return;
+    }
+    next[key] = defaultValueForSchema(value);
+  });
+
+  return next;
+}
+
+export function getSchemaProperties(tool) {
+  return Object.entries(tool?.inputSchema?.properties || {}).map(([name, schema]) => ({
+    name,
+    schema: schema || {},
+    required: Array.isArray(tool?.inputSchema?.required) && tool.inputSchema.required.includes(name),
+  }));
+}
+
+export function getEvaluationDisplayTags(scenario) {
+  if (!scenario) return [];
+
+  const nextTags = [];
+
+  if (scenario.mode === 'negative') {
+    nextTags.push('NEG');
+  }
+
+  if (scenario.source !== 'user') {
+    nextTags.push(scenario.source === 'generated-edited' ? 'Generated' : 'Generated');
+  }
+
+  if ((scenario.expectedToolCalls || []).some((step) => step.purpose === 'visualize')) {
+    nextTags.push('Widget');
+  }
+
+  if ((scenario.expectedToolCalls || []).length > 1) {
+    nextTags.push('Multi-step');
+  }
+
+  return Array.from(new Set(nextTags));
+}

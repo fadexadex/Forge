@@ -2,8 +2,10 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateObject } from 'ai';
 import { z } from 'zod';
 import {
+  buildArgsFromSchema,
   clamp,
   getToolWidgetResourceUri,
+  inferToolPurpose,
   titleFromToolName,
 } from './helpers.js';
 
@@ -11,6 +13,8 @@ const expectedToolCallSchema = z.object({
   toolName: z.string(),
   expectedArgs: z.record(z.unknown()).default({}),
   argMatchMode: z.enum(['exact', 'subset', 'keys-only']).default('subset'),
+  importance: z.enum(['required', 'optional']).default('required'),
+  purpose: z.enum(['input', 'data', 'transform', 'visualize', 'export', 'other']).default('other'),
 });
 
 const generatedScenarioSchema = z.object({
@@ -22,7 +26,15 @@ const generatedScenarioSchema = z.object({
   scenarioText: z.string().min(8),
   userPrompt: z.string().min(8),
   expectedToolCalls: z.array(expectedToolCallSchema).default([]),
+  allowedToolNames: z.array(z.string()).default([]),
   expectedOutput: z.string().min(8),
+  generationMetadata: z.object({
+    sourceKind: z.enum(['ai', 'heuristic-fallback']).default('ai'),
+    workflowSummary: z.string().default(''),
+  }).default({
+    sourceKind: 'ai',
+    workflowSummary: '',
+  }),
 });
 
 const responseSchema = z.object({
@@ -48,8 +60,11 @@ Rules:
 - Include this distribution exactly when possible: easy=${distribution.easy}, medium=${distribution.medium}, hard=${distribution.hard}, negative=${distribution.negative}.
 - Negative scenarios should describe cases where the agent should avoid calling tools.
 - Positive scenarios can include multi-step tool chains.
+- Positive scenarios should include prerequisite/helper steps when the workflow clearly requires them.
+- Mark helper or setup steps as importance=optional and also include them in allowedToolNames when appropriate.
 - When a tool has a widget or app UI, include at least one widget-oriented scenario.
 - expectedToolCalls must only reference tool names from the provided list.
+- Add a short workflowSummary describing why the chosen path makes sense.
 - expectedArgs should contain realistic, typed arguments when the schema makes them obvious.
 - expectedOutput should describe the user-visible result or app experience.
 - tags should be short labels like AI, NEG, multi-step, widget, retrieval, analysis.
@@ -89,6 +104,8 @@ function coerceExpectedToolCalls(toolNames, expectedToolCalls = [], fallbackTool
       toolName: call.toolName,
       expectedArgs: call.expectedArgs || {},
       argMatchMode: call.argMatchMode || 'subset',
+      importance: call.importance || 'required',
+      purpose: call.purpose || inferToolPurpose(call.toolName),
     }));
 
   if (mode === 'negative') {
@@ -107,6 +124,8 @@ function coerceExpectedToolCalls(toolNames, expectedToolCalls = [], fallbackTool
     toolName: fallbackToolName,
     expectedArgs: {},
     argMatchMode: 'keys-only',
+    importance: 'required',
+    purpose: inferToolPurpose(fallbackToolName),
   }];
 }
 
@@ -123,18 +142,26 @@ function createGenericPositiveScenario(tool, difficulty = 'easy', title = null) 
     userPrompt: `Use ${tool.name} to help me with this request.`,
     expectedToolCalls: [{
       toolName: tool.name,
-      expectedArgs: {},
+      expectedArgs: buildArgsFromSchema(tool.inputSchema || {}),
       argMatchMode: 'keys-only',
+      importance: 'required',
+      purpose: inferToolPurpose(tool.name),
     }],
+    allowedToolNames: [],
     expectedOutput: widgetResourceUri
       ? `A successful response that opens or references the ${titleFromToolName(tool.name)} app experience.`
       : `A successful response that clearly uses ${tool.name} and summarizes the result for the user.`,
+    generationMetadata: {
+      sourceKind: 'heuristic-fallback',
+      workflowSummary: `${tool.name} looks like the primary step for this request.`,
+    },
   };
 }
 
 function buildFallbackScenarios({ tools = [], count = 6 }) {
   const widgetTools = tools.filter((tool) => getToolWidgetResourceUri(tool));
   const toolByName = new Map(tools.map((tool) => [tool.name, tool]));
+  const metricSelectorTool = tools.find((tool) => /select.*metric|metric.*select/i.test(tool.name));
 
   const scenarios = [];
 
@@ -144,20 +171,40 @@ function buildFallbackScenarios({ tools = [], count = 6 }) {
       description: 'Retrieve state-level revenue metrics for a specific year and period.',
       difficulty: 'easy',
       mode: 'positive',
-      tags: ['AI', 'retrieval'],
+      tags: ['retrieval'],
       scenarioText: 'User needs to retrieve sales revenue metrics for specific Indian states with monthly granularity.',
       userPrompt: 'Get me the revenue data for Maharashtra, Tamil Nadu, and Karnataka for 2024 on a monthly basis.',
-      expectedToolCalls: [{
-        toolName: 'get-sales-data',
-        expectedArgs: {
-          metric: 'revenue',
-          period: 'monthly',
-          states: ['MH', 'TN', 'KA'],
-          year: '2024',
+      expectedToolCalls: [
+        metricSelectorTool
+          ? {
+              toolName: metricSelectorTool.name,
+              expectedArgs: {
+                metric: 'revenue',
+              },
+              argMatchMode: 'subset',
+              importance: 'optional',
+              purpose: 'input',
+            }
+          : null,
+        {
+          toolName: 'get-sales-data',
+          expectedArgs: {
+            metric: 'revenue',
+            period: 'monthly',
+            states: ['MH', 'TN', 'KA'],
+            year: '2024',
+          },
+          argMatchMode: 'subset',
+          importance: 'required',
+          purpose: 'data',
         },
-        argMatchMode: 'subset',
-      }],
+      ].filter(Boolean),
+      allowedToolNames: metricSelectorTool ? [metricSelectorTool.name] : [],
       expectedOutput: 'Structured sales report containing revenue breakdown by month and state for the requested period.',
+      generationMetadata: {
+        sourceKind: 'heuristic-fallback',
+        workflowSummary: 'Choose the sales metric first when available, then fetch the requested state data.',
+      },
     });
   }
 
@@ -167,10 +214,19 @@ function buildFallbackScenarios({ tools = [], count = 6 }) {
       description: 'Fetch data then visualize it as an app-backed chart experience.',
       difficulty: 'medium',
       mode: 'positive',
-      tags: ['AI', 'multi-step', 'widget'],
+      tags: ['widget'],
       scenarioText: 'User wants a chart-based view of monthly revenue for multiple states.',
       userPrompt: 'Show me a visual dashboard of monthly revenue for Maharashtra, Tamil Nadu, and Karnataka in 2024.',
       expectedToolCalls: [
+        metricSelectorTool
+          ? {
+              toolName: metricSelectorTool.name,
+              expectedArgs: { metric: 'revenue' },
+              argMatchMode: 'subset',
+              importance: 'optional',
+              purpose: 'input',
+            }
+          : null,
         {
           toolName: 'get-sales-data',
           expectedArgs: {
@@ -180,6 +236,8 @@ function buildFallbackScenarios({ tools = [], count = 6 }) {
             year: '2024',
           },
           argMatchMode: 'subset',
+          importance: 'required',
+          purpose: 'data',
         },
         {
           toolName: 'visualize-sales-data',
@@ -188,9 +246,16 @@ function buildFallbackScenarios({ tools = [], count = 6 }) {
             report: {},
           },
           argMatchMode: 'keys-only',
+          importance: 'required',
+          purpose: 'visualize',
         },
-      ],
+      ].filter(Boolean),
+      allowedToolNames: metricSelectorTool ? [metricSelectorTool.name] : [],
       expectedOutput: 'An interactive chart or widget showing the requested revenue breakdown.',
+      generationMetadata: {
+        sourceKind: 'heuristic-fallback',
+        workflowSummary: 'Fetch the requested dataset, then hand it to the visualization tool to open the app-backed chart.',
+      },
     });
   }
 
@@ -200,10 +265,19 @@ function buildFallbackScenarios({ tools = [], count = 6 }) {
       description: 'Retrieve sales data and generate a downloadable PDF report.',
       difficulty: 'hard',
       mode: 'positive',
-      tags: ['AI', 'multi-step', 'export'],
+      tags: ['export'],
       scenarioText: 'User wants a report they can save or share after reviewing sales metrics.',
       userPrompt: 'Create a report with monthly revenue for Maharashtra, Tamil Nadu, and Karnataka in 2024 and prepare it as a PDF.',
       expectedToolCalls: [
+        metricSelectorTool
+          ? {
+              toolName: metricSelectorTool.name,
+              expectedArgs: { metric: 'revenue' },
+              argMatchMode: 'subset',
+              importance: 'optional',
+              purpose: 'input',
+            }
+          : null,
         {
           toolName: 'get-sales-data',
           expectedArgs: {
@@ -213,6 +287,8 @@ function buildFallbackScenarios({ tools = [], count = 6 }) {
             year: '2024',
           },
           argMatchMode: 'subset',
+          importance: 'required',
+          purpose: 'data',
         },
         {
           toolName: 'show-sales-pdf-report',
@@ -221,9 +297,16 @@ function buildFallbackScenarios({ tools = [], count = 6 }) {
             report: {},
           },
           argMatchMode: 'keys-only',
+          importance: 'required',
+          purpose: 'export',
         },
-      ],
+      ].filter(Boolean),
+      allowedToolNames: metricSelectorTool ? [metricSelectorTool.name] : [],
       expectedOutput: 'A PDF-oriented report experience with the requested sales data summarized and ready to download.',
+      generationMetadata: {
+        sourceKind: 'heuristic-fallback',
+        workflowSummary: 'Gather the sales dataset first, then render the export-oriented report tool.',
+      },
     });
   }
 
@@ -233,20 +316,38 @@ function buildFallbackScenarios({ tools = [], count = 6 }) {
       description: 'Request a different metric and period using the same reporting tool.',
       difficulty: 'medium',
       mode: 'positive',
-      tags: ['AI', 'retrieval'],
+      tags: ['retrieval'],
       scenarioText: 'User wants quarterly order volume for a subset of states.',
       userPrompt: 'Get quarterly orders data for Maharashtra and Karnataka in 2024.',
-      expectedToolCalls: [{
-        toolName: 'get-sales-data',
-        expectedArgs: {
-          metric: 'orders',
-          period: 'quarterly',
-          states: ['MH', 'KA'],
-          year: '2024',
+      expectedToolCalls: [
+        metricSelectorTool
+          ? {
+              toolName: metricSelectorTool.name,
+              expectedArgs: { metric: 'orders' },
+              argMatchMode: 'subset',
+              importance: 'optional',
+              purpose: 'input',
+            }
+          : null,
+        {
+          toolName: 'get-sales-data',
+          expectedArgs: {
+            metric: 'orders',
+            period: 'quarterly',
+            states: ['MH', 'KA'],
+            year: '2024',
+          },
+          argMatchMode: 'subset',
+          importance: 'required',
+          purpose: 'data',
         },
-        argMatchMode: 'subset',
-      }],
+      ].filter(Boolean),
+      allowedToolNames: metricSelectorTool ? [metricSelectorTool.name] : [],
       expectedOutput: 'Structured orders data grouped by quarter for the requested states and year.',
+      generationMetadata: {
+        sourceKind: 'heuristic-fallback',
+        workflowSummary: 'Switch to the orders metric when available, then retrieve the quarterly report.',
+      },
     });
   }
 
@@ -255,11 +356,16 @@ function buildFallbackScenarios({ tools = [], count = 6 }) {
     description: 'The user is talking casually and no MCP tool should be required.',
     difficulty: 'easy',
     mode: 'negative',
-    tags: ['AI', 'NEG'],
+    tags: ['NEG'],
     scenarioText: 'User is having a casual conversation about sales terminology and not asking for a report.',
     userPrompt: 'What is the difference between monthly and quarterly reporting for state sales data?',
     expectedToolCalls: [],
+    allowedToolNames: [],
     expectedOutput: 'A plain-language explanation without triggering MCP tools.',
+    generationMetadata: {
+      sourceKind: 'heuristic-fallback',
+      workflowSummary: 'This is conversational and should be answered without MCP calls.',
+    },
   });
 
   scenarios.push({
@@ -267,11 +373,16 @@ function buildFallbackScenarios({ tools = [], count = 6 }) {
     description: 'The request is too underspecified to confidently invoke tools.',
     difficulty: 'medium',
     mode: 'negative',
-    tags: ['AI', 'NEG', 'ambiguity'],
+    tags: ['NEG', 'ambiguity'],
     scenarioText: 'User asks vaguely for sales help without specifying states, metric, or timeframe.',
     userPrompt: 'Can you help me with a sales report?',
     expectedToolCalls: [],
+    allowedToolNames: [],
     expectedOutput: 'A clarifying response that asks for the missing details instead of calling tools immediately.',
+    generationMetadata: {
+      sourceKind: 'heuristic-fallback',
+      workflowSummary: 'The request is underspecified, so the assistant should ask a follow-up before touching tools.',
+    },
   });
 
   for (const tool of widgetTools) {
@@ -327,7 +438,12 @@ function normalizeGeneratedScenarios({ scenarios = [], tools = [], count = 6 }) 
         fallbackToolName,
         scenario.mode
       ),
+      allowedToolNames: (scenario.allowedToolNames || []).filter((toolName) => toolNames.has(toolName)),
       expectedOutput: scenario.expectedOutput,
+      generationMetadata: scenario.generationMetadata || {
+        sourceKind: 'ai',
+        workflowSummary: '',
+      },
     };
   });
 
@@ -392,3 +508,8 @@ export async function generateEvalScenarios({
     }));
   }
 }
+
+export const __test = {
+  buildFallbackScenarios,
+  normalizeGeneratedScenarios,
+};

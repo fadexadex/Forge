@@ -43,7 +43,7 @@ test('generates and persists evaluation scenarios by scope', async ({ page }) =>
   await page.getByTestId('evaluations-tab-button').click();
   const scenarioList = page.getByTestId('evaluation-scenario-list');
   await expect(scenarioList).toBeVisible();
-  await expect(scenarioList.locator('button')).toHaveCount(6);
+  await expect(scenarioList.locator('[data-testid^="evaluation-scenario-item-"]')).toHaveCount(6);
   await expect(scenarioList.getByText('Fetch revenue data for specific states').first()).toBeVisible();
   await expect(scenarioList.getByText('Casual conversation about states and periods').first()).toBeVisible();
   await expect(page.getByTestId('evaluation-negative-badge').first()).toBeVisible();
@@ -52,7 +52,7 @@ test('generates and persists evaluation scenarios by scope', async ({ page }) =>
   await page.getByRole('button', { name: 'Test' }).click();
   await connectSampleServer(page);
   await page.getByTestId('evaluations-tab-button').click();
-  await expect(page.getByTestId('evaluation-scenario-list').locator('button')).toHaveCount(6);
+  await expect(page.getByTestId('evaluation-scenario-list').locator('[data-testid^="evaluation-scenario-item-"]')).toHaveCount(6);
 });
 
 test('runs an evaluation and renders the trace workspace', async ({ page }) => {
@@ -75,11 +75,14 @@ test('runs an evaluation and renders the trace workspace', async ({ page }) => {
 
   await expect(page.getByText(/tool calls/i)).toBeVisible();
   await expect(page.getByText(/tokens/i)).toBeVisible();
-  await expect(page.getByText(/Trajectory/i)).toBeVisible();
+  await expect(page.getByText(/Path score/i)).toBeVisible();
 
   await page.getByTestId('evaluation-trace-tab-timeline').click();
   await expect(page.getByText('User prompt')).toBeVisible();
-  await page.getByText(/Tool ·/).first().click();
+  const firstToolRow = page.getByText(/Tool ·/).first();
+  await firstToolRow.hover();
+  await expect(page.getByTestId('evaluation-trace-hover-preview')).toBeVisible();
+  await firstToolRow.click();
   await expect(page.getByTestId('evaluation-selected-trace-row')).toBeVisible();
   await expect(page.getByTestId('evaluation-reveal-in-chat')).toBeVisible();
 

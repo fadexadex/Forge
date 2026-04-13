@@ -8,7 +8,12 @@ import { EvaluationScenarioList } from './evaluations/EvaluationScenarioList.jsx
 import { useEvaluationStore } from '../../stores/evaluationStore';
 
 export function TestSidebar() {
-  const { connectionStatus, selectedPrimitiveType, setSelectedPrimitiveType } = useTestStore();
+  const {
+    connectionStatus,
+    selectedPrimitiveType,
+    lastNonEvaluationPrimitiveType,
+    setSelectedPrimitiveType,
+  } = useTestStore();
   const { currentScopeKey, generationByScope, markCurrentScopeSeen } = useEvaluationStore();
   const isConnected = connectionStatus === 'connected';
   const generationState = currentScopeKey ? generationByScope[currentScopeKey] : null;
@@ -71,6 +76,10 @@ export function TestSidebar() {
             </button>
             <button
               onClick={() => {
+                if (selectedPrimitiveType === 'evaluations') {
+                  setSelectedPrimitiveType(lastNonEvaluationPrimitiveType || 'tools');
+                  return;
+                }
                 setSelectedPrimitiveType('evaluations');
                 markCurrentScopeSeen();
               }}

@@ -16,8 +16,13 @@ import { createTraceRecorder } from '../../../utils/evaluation/createTraceRecord
 import { scoreTrajectory } from '../../../utils/evaluation/scoreTrajectory.js';
 import { judgeOutput } from '../../../utils/evaluation/judgeOutput.js';
 import {
+  buildArgsFromSchema,
   formatDateTime,
   formatDuration,
+  getEvaluationDisplayTags,
+  getMatchModeDescription,
+  getSchemaProperties,
+  inferToolPurpose,
   stableStringify,
 } from '../../../utils/evaluation/helpers.js';
 import { EvaluationTraceWorkspace } from './EvaluationTraceWorkspace.jsx';
@@ -139,16 +144,203 @@ function stepHasBuilderTool(toolName, tools) {
   return tools.some((tool) => tool.name === toolName);
 }
 
-function ScenarioSection({ label, children, className = '' }) {
+function statusChipClasses(kind = 'default') {
+  switch (kind) {
+    case 'negative':
+      return 'border-amber-200 bg-amber-50 text-amber-700';
+    case 'generated':
+      return 'border-neutral-200 bg-neutral-100 text-neutral-700';
+    default:
+      return 'border-neutral-200 bg-white text-neutral-600';
+  }
+}
+
+function ScenarioSection({ label, children, description = null }) {
   return (
-    <section className={`rounded-xl border border-neutral-200 bg-white ${className}`}>
-      <div className="border-b border-neutral-200 px-4 py-3">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+    <section className="border border-neutral-200 bg-white">
+      <div className="border-b border-neutral-200 px-5 py-4">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
           {label}
         </div>
+        {description ? (
+          <div className="mt-1 text-sm text-neutral-500">{description}</div>
+        ) : null}
       </div>
-      <div className="p-4">{children}</div>
+      <div className="px-5 py-4">{children}</div>
     </section>
+  );
+}
+
+function ToolSelect({ value, tools, onChange, testId }) {
+  return (
+    <select
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      data-testid={testId}
+      className="h-10 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm text-neutral-800 outline-none transition-colors focus:border-neutral-400"
+    >
+      <option value="">Select a tool</option>
+      {tools.map((tool) => (
+        <option key={tool.name} value={tool.name}>
+          {tool.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function ExpectedArgsEditor({
+  call,
+  tool,
+  rawValue,
+  rawError,
+  onRawChange,
+  onRawCommit,
+  onExpectedArgsChange,
+}) {
+  const schemaProperties = useMemo(() => getSchemaProperties(tool), [tool]);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  if (!tool) {
+    return (
+      <div className="rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-500">
+        Pick a tool to scaffold its expected arguments.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {schemaProperties.length === 0 ? (
+        <div className="rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-500">
+          This tool has no declared schema fields.
+        </div>
+      ) : (
+        schemaProperties.map(({ name, schema, required }) => {
+          const value = call.expectedArgs?.[name];
+          const label = (
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-neutral-800">{name}</span>
+              {required ? (
+                <span className="text-[10px] uppercase tracking-wide text-neutral-400">required</span>
+              ) : null}
+            </div>
+          );
+
+          const baseFieldClasses = 'mt-2 w-full rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-800 outline-none transition-colors focus:border-neutral-400';
+
+          if (schema.type === 'boolean') {
+            return (
+              <div key={name} className="border border-neutral-200 bg-white px-3 py-3">
+                {label}
+                {schema.description ? (
+                  <div className="mt-1 text-xs text-neutral-500">{schema.description}</div>
+                ) : null}
+                <label className="mt-3 flex items-center gap-2 text-sm text-neutral-700">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(value)}
+                    onChange={(event) => onExpectedArgsChange(name, event.target.checked)}
+                  />
+                  Enabled
+                </label>
+              </div>
+            );
+          }
+
+          if (schema.enum?.length) {
+            return (
+              <div key={name} className="border border-neutral-200 bg-white px-3 py-3">
+                {label}
+                {schema.description ? (
+                  <div className="mt-1 text-xs text-neutral-500">{schema.description}</div>
+                ) : null}
+                <select
+                  value={value ?? ''}
+                  onChange={(event) => onExpectedArgsChange(name, event.target.value)}
+                  className={baseFieldClasses}
+                >
+                  <option value="">Select a value</option>
+                  {schema.enum.map((optionValue) => (
+                    <option key={String(optionValue)} value={String(optionValue)}>
+                      {String(optionValue)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            );
+          }
+
+          if (schema.type === 'object' || schema.type === 'array') {
+            return (
+              <div key={name} className="border border-neutral-200 bg-white px-3 py-3">
+                {label}
+                {schema.description ? (
+                  <div className="mt-1 text-xs text-neutral-500">{schema.description}</div>
+                ) : null}
+                <textarea
+                  value={prettyJson(value ?? buildArgsFromSchema(schema))}
+                  onChange={(event) => {
+                    try {
+                      onExpectedArgsChange(name, parseArgsJson(event.target.value));
+                    } catch {
+                      onRawChange(prettyJson({ ...call.expectedArgs, [name]: event.target.value }));
+                    }
+                  }}
+                  className="mt-2 min-h-[96px] w-full resize-y rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 font-mono text-[12px] text-neutral-800 outline-none transition-colors focus:border-neutral-400"
+                />
+              </div>
+            );
+          }
+
+          return (
+            <div key={name} className="border border-neutral-200 bg-white px-3 py-3">
+              {label}
+              {schema.description ? (
+                <div className="mt-1 text-xs text-neutral-500">{schema.description}</div>
+              ) : null}
+              <input
+                type={schema.type === 'number' || schema.type === 'integer' ? 'number' : 'text'}
+                value={value ?? ''}
+                onChange={(event) => {
+                  const nextValue = schema.type === 'number' || schema.type === 'integer'
+                    ? (event.target.value === '' ? '' : Number(event.target.value))
+                    : event.target.value;
+                  onExpectedArgsChange(name, nextValue);
+                }}
+                className={baseFieldClasses}
+              />
+            </div>
+          );
+        })
+      )}
+
+      <div className="border border-neutral-200 bg-neutral-50">
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen((value) => !value)}
+          className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500"
+        >
+          Raw JSON
+          <span>{advancedOpen ? 'Hide' : 'Show'}</span>
+        </button>
+        {advancedOpen ? (
+          <div className="border-t border-neutral-200 px-3 py-3">
+            <textarea
+              value={rawValue}
+              onChange={(event) => onRawChange(event.target.value)}
+              onBlur={onRawCommit}
+              className={`min-h-[120px] w-full resize-y rounded-md border bg-white px-3 py-2 font-mono text-[12px] text-neutral-800 outline-none ${
+                rawError ? 'border-red-300' : 'border-neutral-200 focus:border-neutral-400'
+              }`}
+            />
+            {rawError ? (
+              <div className="mt-2 text-xs text-red-600">{rawError}</div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -174,6 +366,7 @@ export function EvaluationsPanel() {
     duplicateScenario,
     addExpectedToolCall,
     removeExpectedToolCall,
+    deleteScenario,
     startRun,
     finishRun,
     clearScenarioRuns,
@@ -183,15 +376,26 @@ export function EvaluationsPanel() {
   const [selectedRunId, setSelectedRunId] = useState(null);
   const [argsDrafts, setArgsDrafts] = useState({});
   const [argErrors, setArgErrors] = useState({});
+  const [runDockOpen, setRunDockOpen] = useState(false);
+  const [liveTraceTick, setLiveTraceTick] = useState(0);
   const traceRecorderRef = useRef(createTraceRecorder());
   const transportEventsRef = useRef([]);
   const activeRunRef = useRef(null);
   const finalizingRunRef = useRef(false);
+  const scrollAreaRef = useRef(null);
+  const runDockRef = useRef(null);
+  const runHeaderRef = useRef(null);
 
-  const scenarios = currentScopeKey ? (scenariosByScope[currentScopeKey] || []) : [];
+  const scenarios = useMemo(
+    () => (currentScopeKey ? (scenariosByScope[currentScopeKey] || []) : []),
+    [currentScopeKey, scenariosByScope]
+  );
   const selectedScenarioId = currentScopeKey ? selectedScenarioIdByScope[currentScopeKey] : null;
   const selectedScenario = scenarios.find((scenario) => scenario.id === selectedScenarioId) || null;
-  const runs = selectedScenario ? (runsByScenario[selectedScenario.id] || []) : [];
+  const runs = useMemo(
+    () => (selectedScenario ? (runsByScenario[selectedScenario.id] || []) : []),
+    [runsByScenario, selectedScenario]
+  );
   const generationState = currentScopeKey ? generationByScope[currentScopeKey] : null;
 
   useEffect(() => {
@@ -202,6 +406,9 @@ export function EvaluationsPanel() {
 
   useEffect(() => {
     setSelectedRunId(runs[0]?.id || null);
+    if (runs.length > 0) {
+      setRunDockOpen(true);
+    }
   }, [selectedScenario?.id, runs]);
 
   useEffect(() => {
@@ -220,6 +427,12 @@ export function EvaluationsPanel() {
     setArgErrors({});
   }, [selectedScenario]);
 
+  useEffect(() => {
+    if (!isFinite(liveTraceTick)) {
+      setLiveTraceTick(0);
+    }
+  }, [liveTraceTick]);
+
   const selectedRun = runs.find((run) => run.id === selectedRunId) || runs[0] || null;
   const transportBase = useMemo(
     () => createTransportAdapter(testMode, client, tools),
@@ -231,6 +444,7 @@ export function EvaluationsPanel() {
     return createTrajectoryTransportProxy(transportBase, {
       onToolCallResult: (event) => {
         transportEventsRef.current = [...transportEventsRef.current, event];
+        setLiveTraceTick((value) => value + 1);
       },
     });
   }, [transportBase]);
@@ -254,6 +468,19 @@ export function EvaluationsPanel() {
     traceRecorder: traceRecorderRef.current,
     modelPreset: MODEL_PRESET,
   });
+
+  useEffect(() => {
+    if (!isStreaming || !activeRunRef.current) return undefined;
+    const intervalId = window.setInterval(() => {
+      setLiveTraceTick((value) => value + 1);
+    }, 120);
+    return () => window.clearInterval(intervalId);
+  }, [isStreaming]);
+
+  const liveTrace = useMemo(() => {
+    void liveTraceTick;
+    return traceRecorderRef.current.getSpans();
+  }, [liveTraceTick]);
 
   useEffect(() => {
     if (!activeRunRef.current || isStreaming || finalizingRunRef.current === true) {
@@ -316,7 +543,11 @@ export function EvaluationsPanel() {
         transcript: messages,
         actualToolCalls,
         trace: traceRecorderRef.current.getSpans(),
-        trajectory,
+        widgetSessionsById: sessionsById,
+        trajectory: {
+          ...trajectory,
+          outputScore: outputEvaluation.score,
+        },
         outputEvaluation,
         latestError,
       });
@@ -324,8 +555,24 @@ export function EvaluationsPanel() {
       activeRunRef.current = null;
       transportEventsRef.current = [];
       finalizingRunRef.current = false;
+      setLiveTraceTick((value) => value + 1);
     })();
-  }, [finishRun, geminiApiKey, isStreaming, lastUsage, messages, tools]);
+  }, [finishRun, geminiApiKey, isStreaming, lastUsage, messages, sessionsById, tools]);
+
+  const focusRunDock = (behavior = 'smooth') => {
+    requestAnimationFrame(() => {
+      runDockRef.current?.scrollIntoView({ behavior, block: 'start' });
+      window.setTimeout(() => {
+        runHeaderRef.current?.focus();
+      }, behavior === 'smooth' ? 180 : 0);
+    });
+  };
+
+  const handleOpenToolInBuilder = (toolName) => {
+    if (!toolName || !stepHasBuilderTool(toolName, tools)) return;
+    selectTool(toolName);
+    setSelectedPrimitiveType('tools');
+  };
 
   const handleRun = async () => {
     if (!selectedScenario || !selectedScenario.userPrompt.trim()) {
@@ -336,6 +583,7 @@ export function EvaluationsPanel() {
     if (!run) return;
 
     setSelectedRunId(run.id);
+    setRunDockOpen(true);
     activeRunRef.current = {
       runId: run.id,
       scenarioId: selectedScenario.id,
@@ -346,7 +594,9 @@ export function EvaluationsPanel() {
     transportEventsRef.current = [];
     traceRecorderRef.current.reset();
     traceRecorderRef.current.startPrompt(selectedScenario.userPrompt);
+    setLiveTraceTick((value) => value + 1);
     clearConversation();
+    focusRunDock('smooth');
 
     const submitted = await sendMessage(selectedScenario.userPrompt);
     if (!submitted) {
@@ -365,11 +615,33 @@ export function EvaluationsPanel() {
     }
   };
 
-  const handleOpenToolInBuilder = (toolName) => {
-    if (!toolName || !stepHasBuilderTool(toolName, tools)) return;
-    selectTool(toolName);
-    setSelectedPrimitiveType('tools');
+  const mutateExpectedCall = (callId, patch) => {
+    if (!selectedScenario) return;
+    const nextCalls = selectedScenario.expectedToolCalls.map((entry) => (
+      entry.id === callId ? { ...entry, ...patch } : entry
+    ));
+    updateScenario(selectedScenario.id, { expectedToolCalls: nextCalls });
   };
+
+  const handleToolChange = (call, toolName) => {
+    const tool = tools.find((entry) => entry.name === toolName);
+    mutateExpectedCall(call.id, {
+      toolName,
+      expectedArgs: buildArgsFromSchema(tool?.inputSchema || {}),
+      purpose: inferToolPurpose(toolName),
+    });
+    setArgsDrafts((prev) => ({
+      ...prev,
+      [call.id]: prettyJson(buildArgsFromSchema(tool?.inputSchema || {})),
+    }));
+  };
+
+  const displayTags = getEvaluationDisplayTags(selectedScenario);
+  const isFreshGenerated = (
+    selectedScenario?.source === 'generated' &&
+    generationState?.batchId &&
+    generationState.batchId === selectedScenario.generationBatchId
+  );
 
   if (!currentScopeKey) {
     return (
@@ -399,31 +671,27 @@ export function EvaluationsPanel() {
     );
   }
 
-  const isFreshGenerated = (
-    selectedScenario.source === 'generated' &&
-    generationState?.batchId &&
-    generationState.batchId === selectedScenario.generationBatchId
-  );
-
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#FAFAFA]">
-      <div className="border-b border-neutral-200 bg-white px-6 py-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="min-w-0">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#F7F7F5]">
+      <div className="border-b border-neutral-200 bg-white px-6 py-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <input
                 value={selectedScenario.title}
                 onChange={(event) => updateScenario(selectedScenario.id, { title: event.target.value })}
-                className="min-w-[280px] border-none bg-transparent p-0 text-lg font-semibold tracking-tight text-neutral-900 outline-none"
+                className="min-w-[280px] flex-1 border-none bg-transparent p-0 text-[22px] font-semibold tracking-tight text-neutral-900 outline-none"
               />
 
-              {selectedScenario.tags.map((tag, index) => (
+              {displayTags.map((tag) => (
                 <span
-                  key={`${selectedScenario.id}-${tag}-${index}`}
+                  key={`${selectedScenario.id}-${tag}`}
                   className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
                     tag === 'NEG'
-                      ? 'border-amber-200 bg-amber-50 text-amber-700'
-                      : 'border-neutral-200 bg-neutral-50 text-neutral-600'
+                      ? statusChipClasses('negative')
+                      : tag === 'Generated'
+                        ? statusChipClasses('generated')
+                        : statusChipClasses()
                   }`}
                 >
                   {tag}
@@ -431,13 +699,16 @@ export function EvaluationsPanel() {
               ))}
 
               {isFreshGenerated ? (
-                <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[10px] font-semibold text-neutral-600">
-                  Freshly generated
+                <span className="rounded-full border border-neutral-200 bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-700">
+                  New batch
                 </span>
               ) : null}
             </div>
 
-            <div className="mt-1 text-[12px] text-neutral-500">
+            <div className="mt-2 text-sm text-neutral-500">
+              {selectedScenario.generationMetadata?.workflowSummary || 'Define the path you expect the agent to take.'}
+            </div>
+            <div className="mt-1 text-[12px] text-neutral-400">
               Last updated {formatDateTime(selectedScenario.updatedAt)}
             </div>
           </div>
@@ -452,19 +723,18 @@ export function EvaluationsPanel() {
               <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
             </select>
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => duplicateScenario(selectedScenario.id)}
-            >
+            <Button variant="outline" size="sm" onClick={() => duplicateScenario(selectedScenario.id)}>
               Duplicate
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => createScenario()}>
+              New Scenario
             </Button>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => createScenario()}
+              onClick={() => deleteScenario(selectedScenario.id)}
             >
-              New Scenario
+              Delete
             </Button>
             <Button
               size="sm"
@@ -478,9 +748,9 @@ export function EvaluationsPanel() {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+      <div ref={scrollAreaRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
         {!geminiApiKey ? (
-          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div className="mb-6 border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             Configure API key to auto-generate evaluations and run this scenario.
           </div>
         ) : null}
@@ -490,9 +760,8 @@ export function EvaluationsPanel() {
             <textarea
               value={selectedScenario.scenarioText}
               onChange={(event) => updateScenario(selectedScenario.id, { scenarioText: event.target.value })}
-              className="min-h-[84px] w-full resize-y rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-800 outline-none focus:border-neutral-300"
+              className="min-h-[88px] w-full resize-y border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm leading-relaxed text-neutral-800 outline-none transition-colors focus:border-neutral-400"
             />
-
             {selectedScenario.source === 'generated' ? (
               <div className="mt-3">
                 <Button
@@ -511,163 +780,176 @@ export function EvaluationsPanel() {
             <textarea
               value={selectedScenario.userPrompt}
               onChange={(event) => updateScenario(selectedScenario.id, { userPrompt: event.target.value })}
-              className="min-h-[96px] w-full resize-y rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-800 outline-none focus:border-neutral-300"
+              className="min-h-[104px] w-full resize-y border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm leading-relaxed text-neutral-800 outline-none transition-colors focus:border-neutral-400"
             />
           </ScenarioSection>
 
-          <ScenarioSection label="Expected Tool Path">
+          <ScenarioSection label="Expected Tool Path" description={selectedScenario.allowedToolNames?.length ? `Allowed helper tools: ${selectedScenario.allowedToolNames.join(', ')}` : null}>
             {selectedScenario.mode === 'negative' ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
+              <div className="border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
                 Expected tool calls: none
               </div>
             ) : (
-              <div className="space-y-3">
-                {selectedScenario.expectedToolCalls.map((call, index) => (
-                  <div key={call.id} className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-                        Step {index + 1}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {testMode === 'builder' && stepHasBuilderTool(call.toolName, tools) ? (
+              <div className="space-y-4">
+                {selectedScenario.expectedToolCalls.map((call, index) => {
+                  const tool = tools.find((entry) => entry.name === call.toolName);
+                  return (
+                    <div key={call.id} className="border border-neutral-200 bg-[#FAFAF8] p-4">
+                      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                            Step {index + 1}
+                          </div>
+                          <div className="mt-1 text-sm text-neutral-500">
+                            {call.importance === 'optional' ? 'Optional support step' : 'Required step'}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {testMode === 'builder' && stepHasBuilderTool(call.toolName, tools) ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 px-2 text-xs"
+                              onClick={() => handleOpenToolInBuilder(call.toolName)}
+                            >
+                              Open Tool in Builder
+                            </Button>
+                          ) : null}
+                          {tool?._meta?.ui?.resourceUri ? (
+                            <span className="rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-neutral-600">
+                              Widget
+                            </span>
+                          ) : null}
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-8 px-2 text-xs"
-                            onClick={() => handleOpenToolInBuilder(call.toolName)}
+                            className="h-8 px-2 text-xs text-red-600 hover:bg-red-50 hover:text-red-700"
+                            onClick={() => removeExpectedToolCall(selectedScenario.id, call.id)}
                           >
-                            Open Tool in Builder
+                            Delete
                           </Button>
-                        ) : null}
-                        {tools.find((tool) => tool.name === call.toolName)?._meta?.ui?.resourceUri ? (
-                          <span className="rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-neutral-600">
-                            Widget
-                          </span>
-                        ) : null}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-8 px-2 text-xs text-red-600 hover:bg-red-50 hover:text-red-700"
-                          onClick={() => removeExpectedToolCall(selectedScenario.id, call.id)}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
-                      <div>
-                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
-                          Tool
                         </div>
-                        <input
-                          list={`evaluation-tools-${selectedScenario.id}`}
-                          value={call.toolName}
-                          onChange={(event) => {
-                            const nextCalls = selectedScenario.expectedToolCalls.map((entry) => (
-                              entry.id === call.id
-                                ? { ...entry, toolName: event.target.value }
-                                : entry
-                            ));
-                            updateScenario(selectedScenario.id, { expectedToolCalls: nextCalls });
+                      </div>
+
+                      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.3fr)_180px_180px]">
+                        <div>
+                          <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                            Tool
+                          </div>
+                          <ToolSelect
+                            value={call.toolName}
+                            tools={tools}
+                            onChange={(toolName) => handleToolChange(call, toolName)}
+                          />
+                          {tool?.description ? (
+                            <div className="mt-2 text-xs text-neutral-500">{tool.description}</div>
+                          ) : null}
+                        </div>
+
+                        <div>
+                          <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                            Match mode
+                          </div>
+                          <select
+                            value={call.argMatchMode}
+                            onChange={(event) => mutateExpectedCall(call.id, { argMatchMode: event.target.value })}
+                            className="h-10 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm text-neutral-800 outline-none transition-colors focus:border-neutral-400"
+                          >
+                            <option value="exact">Exact</option>
+                            <option value="subset">Subset</option>
+                            <option value="keys-only">Keys only</option>
+                          </select>
+                          <div className="mt-2 text-xs text-neutral-500">
+                            {getMatchModeDescription(call.argMatchMode)}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                            Importance
+                          </div>
+                          <select
+                            value={call.importance || 'required'}
+                            onChange={(event) => mutateExpectedCall(call.id, { importance: event.target.value })}
+                            className="h-10 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm text-neutral-800 outline-none transition-colors focus:border-neutral-400"
+                          >
+                            <option value="required">Required</option>
+                            <option value="optional">Optional</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="mt-4">
+                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                          Expected arguments
+                        </div>
+                        <ExpectedArgsEditor
+                          call={call}
+                          tool={tool}
+                          rawValue={argsDrafts[call.id] ?? prettyJson(call.expectedArgs)}
+                          rawError={argErrors[call.id]}
+                          onRawChange={(value) => {
+                            setArgsDrafts((prev) => ({ ...prev, [call.id]: value }));
+                            setArgErrors((prev) => ({ ...prev, [call.id]: null }));
                           }}
-                          className="h-10 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-800 outline-none focus:border-neutral-300"
+                          onRawCommit={() => {
+                            try {
+                              const parsed = parseArgsJson(argsDrafts[call.id] ?? prettyJson(call.expectedArgs));
+                              mutateExpectedCall(call.id, { expectedArgs: parsed });
+                              setArgErrors((prev) => ({ ...prev, [call.id]: null }));
+                            } catch (error) {
+                              setArgErrors((prev) => ({ ...prev, [call.id]: error.message }));
+                            }
+                          }}
+                          onExpectedArgsChange={(fieldName, value) => {
+                            const nextArgs = {
+                              ...(call.expectedArgs || {}),
+                              [fieldName]: value,
+                            };
+                            mutateExpectedCall(call.id, { expectedArgs: nextArgs });
+                            setArgsDrafts((prev) => ({ ...prev, [call.id]: prettyJson(nextArgs) }));
+                          }}
                         />
                       </div>
-
-                      <div>
-                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
-                          Match mode
-                        </div>
-                        <select
-                          value={call.argMatchMode}
-                          onChange={(event) => {
-                            const nextCalls = selectedScenario.expectedToolCalls.map((entry) => (
-                              entry.id === call.id
-                                ? { ...entry, argMatchMode: event.target.value }
-                                : entry
-                            ));
-                            updateScenario(selectedScenario.id, { expectedToolCalls: nextCalls });
-                          }}
-                          className="h-10 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-800 outline-none focus:border-neutral-300"
-                        >
-                          <option value="exact">Exact</option>
-                          <option value="subset">Subset</option>
-                          <option value="keys-only">Keys only</option>
-                        </select>
-                      </div>
                     </div>
-
-                    <div className="mt-3">
-                      <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
-                        Expected arguments
-                      </div>
-                      <textarea
-                        value={argsDrafts[call.id] ?? prettyJson(call.expectedArgs)}
-                        onChange={(event) => {
-                          setArgsDrafts((prev) => ({ ...prev, [call.id]: event.target.value }));
-                          setArgErrors((prev) => ({ ...prev, [call.id]: null }));
-                        }}
-                        onBlur={() => {
-                          try {
-                            const parsed = parseArgsJson(argsDrafts[call.id] ?? prettyJson(call.expectedArgs));
-                            const nextCalls = selectedScenario.expectedToolCalls.map((entry) => (
-                              entry.id === call.id
-                                ? { ...entry, expectedArgs: parsed }
-                                : entry
-                            ));
-                            updateScenario(selectedScenario.id, { expectedToolCalls: nextCalls });
-                            setArgErrors((prev) => ({ ...prev, [call.id]: null }));
-                          } catch (error) {
-                            setArgErrors((prev) => ({ ...prev, [call.id]: error.message }));
-                          }
-                        }}
-                        className={`min-h-[120px] w-full resize-y rounded-lg border bg-white px-3 py-2 font-mono text-[12px] text-neutral-800 outline-none ${
-                          argErrors[call.id] ? 'border-red-300' : 'border-neutral-200 focus:border-neutral-300'
-                        }`}
-                      />
-                      {argErrors[call.id] ? (
-                        <div className="mt-2 text-xs text-red-600">{argErrors[call.id]}</div>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => addExpectedToolCall(selectedScenario.id, tools[0]?.name || '')}
+                  onClick={() => {
+                    const firstTool = tools[0];
+                    addExpectedToolCall(
+                      selectedScenario.id,
+                      firstTool?.name || '',
+                      buildArgsFromSchema(firstTool?.inputSchema || {}),
+                      { purpose: inferToolPurpose(firstTool?.name || '') }
+                    );
+                  }}
                 >
                   Add expected tool call
                 </Button>
               </div>
             )}
-
-            <datalist id={`evaluation-tools-${selectedScenario.id}`}>
-              {tools.map((tool) => (
-                <option key={tool.name} value={tool.name}>
-                  {tool.description}
-                </option>
-              ))}
-            </datalist>
           </ScenarioSection>
 
           <ScenarioSection label="Expected Output">
             <textarea
               value={selectedScenario.expectedOutput}
               onChange={(event) => updateScenario(selectedScenario.id, { expectedOutput: event.target.value })}
-              className="min-h-[96px] w-full resize-y rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-800 outline-none focus:border-neutral-300"
+              className="min-h-[96px] w-full resize-y border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm leading-relaxed text-neutral-800 outline-none transition-colors focus:border-neutral-400"
             />
           </ScenarioSection>
 
-          <details className="rounded-xl border border-neutral-200 bg-white" open={false}>
-            <summary className="cursor-pointer list-none px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+          <details className="border border-neutral-200 bg-white">
+            <summary className="cursor-pointer list-none px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
               Advanced pass criteria
             </summary>
-            <div className="grid gap-3 border-t border-neutral-200 p-4 md:grid-cols-3">
+            <div className="grid gap-3 border-t border-neutral-200 px-5 py-4 md:grid-cols-3">
               <label className="space-y-2 text-sm text-neutral-700">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
-                  Min trajectory score
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                  Min path score
                 </div>
                 <input
                   type="number"
@@ -681,12 +963,12 @@ export function EvaluationsPanel() {
                       minTrajectoryScore: Number(event.target.value),
                     },
                   })}
-                  className="h-10 w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 outline-none focus:border-neutral-300"
+                  className="h-10 w-full border border-neutral-200 bg-neutral-50 px-3 outline-none transition-colors focus:border-neutral-400"
                 />
               </label>
 
               <label className="space-y-2 text-sm text-neutral-700">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
                   Min output score
                 </div>
                 <input
@@ -701,11 +983,11 @@ export function EvaluationsPanel() {
                       minOutputScore: Number(event.target.value),
                     },
                   })}
-                  className="h-10 w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 outline-none focus:border-neutral-300"
+                  className="h-10 w-full border border-neutral-200 bg-neutral-50 px-3 outline-none transition-colors focus:border-neutral-400"
                 />
               </label>
 
-              <label className="flex items-end gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-700">
+              <label className="flex items-end gap-2 border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-700">
                 <input
                   type="checkbox"
                   checked={selectedScenario.passCriteria.failOnUnexpectedTools}
@@ -722,25 +1004,46 @@ export function EvaluationsPanel() {
           </details>
         </div>
 
-        {selectedRun ? (
-          <EvaluationTraceWorkspace
-            run={selectedRun}
-            liveMessages={messages}
-            liveIsStreaming={isStreaming}
-            liveSessionsById={sessionsById}
-            registerWidget={registerWidget}
-            unregisterWidget={unregisterWidget}
-            onClear={() => clearScenarioRuns(selectedScenario.id)}
-            onUseActualPath={() => replaceScenarioWithActualPath(selectedScenario.id, selectedRun.id)}
-            onOpenToolInBuilder={handleOpenToolInBuilder}
-            testMode={testMode}
-          />
-        ) : null}
+        <div
+          ref={runDockRef}
+          className={`mt-6 border border-neutral-200 bg-white transition-all duration-300 ${
+            runDockOpen ? 'opacity-100' : 'opacity-100'
+          }`}
+        >
+          {!selectedRun ? (
+            <div className="px-5 py-5">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                Run dock
+              </div>
+              <div className="mt-2 max-w-2xl text-sm text-neutral-500">
+                Run a scenario to open Forge&apos;s live execution dock. The trace will stay anchored here while the agent works.
+              </div>
+            </div>
+          ) : (
+            <EvaluationTraceWorkspace
+              run={selectedRun}
+              liveMessages={messages}
+              liveIsStreaming={isStreaming}
+              liveSessionsById={sessionsById}
+              liveTrace={liveTrace}
+              runHeaderRef={runHeaderRef}
+              registerWidget={registerWidget}
+              unregisterWidget={unregisterWidget}
+              onClear={() => {
+                clearScenarioRuns(selectedScenario.id);
+                setRunDockOpen(false);
+              }}
+              onUseActualPath={() => replaceScenarioWithActualPath(selectedScenario.id, selectedRun.id)}
+              onOpenToolInBuilder={handleOpenToolInBuilder}
+              testMode={testMode}
+            />
+          )}
+        </div>
 
         {runs.length > 0 ? (
-          <div className="mt-6 rounded-xl border border-neutral-200 bg-white">
-            <div className="border-b border-neutral-200 px-4 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+          <div className="mt-6 border border-neutral-200 bg-white">
+            <div className="border-b border-neutral-200 px-5 py-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
                 Run history
               </div>
             </div>
@@ -749,8 +1052,12 @@ export function EvaluationsPanel() {
                 <button
                   key={run.id}
                   type="button"
-                  onClick={() => setSelectedRunId(run.id)}
-                  className={`flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 text-left transition-colors ${
+                  onClick={() => {
+                    setSelectedRunId(run.id);
+                    setRunDockOpen(true);
+                    focusRunDock('smooth');
+                  }}
+                  className={`flex w-full flex-wrap items-center justify-between gap-3 px-5 py-3 text-left transition-colors ${
                     selectedRun?.id === run.id ? 'bg-neutral-50' : 'hover:bg-neutral-50'
                   }`}
                 >
@@ -771,7 +1078,7 @@ export function EvaluationsPanel() {
                     }`}>
                       {run.result === 'passed' ? 'Pass' : 'Fail'}
                     </span>
-                    <span>{Math.round((run.trajectory?.score || 0) * 100)}%</span>
+                    <span>Path {Math.round((run.trajectory?.score || 0) * 100)}%</span>
                   </div>
                 </button>
               ))}

@@ -5,7 +5,9 @@ import { generateEvalScenarios } from '../utils/evaluation/generateEvalScenarios
 import {
   buildEvaluationScopeKey,
   buildToolSnapshotHash,
+  buildArgsFromSchema,
   getToolWidgetResourceUri,
+  inferToolPurpose,
 } from '../utils/evaluation/helpers.js';
 
 const generateId = () => Math.random().toString(36).slice(2, 11);
@@ -14,12 +16,19 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function createExpectedToolCall(toolName = '', expectedArgs = {}, argMatchMode = 'subset') {
+function createExpectedToolCall(
+  toolName = '',
+  expectedArgs = {},
+  argMatchMode = 'subset',
+  extras = {}
+) {
   return {
     id: generateId(),
     toolName,
     expectedArgs,
     argMatchMode,
+    importance: extras.importance || 'required',
+    purpose: extras.purpose || inferToolPurpose(toolName),
   };
 }
 
@@ -37,12 +46,22 @@ function createDefaultScenario(context = {}) {
     toolSnapshotHash: context.toolSnapshotHash || '',
     difficulty: 'easy',
     mode: 'positive',
-    tags: ['AI'],
+    tags: [],
     scenarioText: 'Describe the use case to test.',
     userPrompt: '',
     expectedToolCalls: firstTool
-      ? [createExpectedToolCall(firstTool.name, {}, 'keys-only')]
+      ? [createExpectedToolCall(
+          firstTool.name,
+          buildArgsFromSchema(firstTool.inputSchema || {}),
+          'keys-only',
+          { purpose: inferToolPurpose(firstTool.name) }
+        )]
       : [],
+    allowedToolNames: [],
+    generationMetadata: {
+      sourceKind: 'ai',
+      workflowSummary: '',
+    },
     expectedOutput: '',
     expectedWidgetResourceUri: widgetResourceUri,
     passCriteria: {
@@ -61,6 +80,8 @@ function toScenarioRecord(rawScenario, context, batchId = null) {
     toolName: call.toolName,
     expectedArgs: call.expectedArgs || {},
     argMatchMode: call.argMatchMode || 'subset',
+    importance: call.importance || 'required',
+    purpose: call.purpose || inferToolPurpose(call.toolName),
   })) || [];
 
   const expectedWidgetResourceUri = expectedToolCalls
@@ -82,6 +103,11 @@ function toScenarioRecord(rawScenario, context, batchId = null) {
     scenarioText: rawScenario.scenarioText || '',
     userPrompt: rawScenario.userPrompt || '',
     expectedToolCalls,
+    allowedToolNames: rawScenario.allowedToolNames || [],
+    generationMetadata: rawScenario.generationMetadata || {
+      sourceKind: 'ai',
+      workflowSummary: '',
+    },
     expectedOutput: rawScenario.expectedOutput || '',
     expectedWidgetResourceUri,
     passCriteria: {
@@ -194,6 +220,8 @@ export const useEvaluationStore = create(
                 toolName: call.toolName,
                 expectedArgs: call.expectedArgs || {},
                 argMatchMode: call.argMatchMode || 'subset',
+                importance: call.importance || 'required',
+                purpose: call.purpose || inferToolPurpose(call.toolName),
               }))
             : scenario.expectedToolCalls;
 
@@ -278,6 +306,8 @@ export const useEvaluationStore = create(
             toolName: call.toolName,
             expectedArgs: call.args || {},
             argMatchMode: 'subset',
+            importance: 'required',
+            purpose: inferToolPurpose(call.toolName),
           }));
 
           const expectedWidgetResourceUri = run.actualToolCalls.find((call) => call.widgetResourceUri)?.widgetResourceUri || null;
@@ -299,7 +329,7 @@ export const useEvaluationStore = create(
         };
       }),
 
-      addExpectedToolCall: (scenarioId, toolName = '') => set((state) => {
+      addExpectedToolCall: (scenarioId, toolName = '', expectedArgs = {}, extras = {}) => set((state) => {
         const scopeKey = state.currentScopeKey;
         if (!scopeKey) return state;
 
@@ -313,7 +343,7 @@ export const useEvaluationStore = create(
                     source: updateScenarioSource(scenario),
                     expectedToolCalls: [
                       ...scenario.expectedToolCalls,
-                      createExpectedToolCall(toolName, {}, 'keys-only'),
+                      createExpectedToolCall(toolName, expectedArgs, 'keys-only', extras),
                     ],
                     updatedAt: nowIso(),
                   }
@@ -373,10 +403,17 @@ export const useEvaluationStore = create(
             matched: [],
             partial: [],
             missing: [],
+            support: [],
             unexpected: [],
             reordered: [],
             usedDistractorTools: [],
             score: 0,
+            coverageScore: 0,
+            argumentScore: 0,
+            orderScore: 0,
+            supportScore: 1,
+            outputScore: 0,
+            explanation: '',
           },
           outputEvaluation: {
             score: 0,
@@ -459,7 +496,7 @@ export const useEvaluationStore = create(
 
         const existingGeneration = get().generationByScope[scopeKey];
         const hasGeneratedScenariosForSnapshot = (get().scenariosByScope[scopeKey] || []).some((scenario) => (
-          scenario.source === 'generated' &&
+          scenario.source !== 'user' &&
           scenario.toolSnapshotHash === toolSnapshotHash
         ));
 

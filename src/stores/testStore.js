@@ -177,6 +177,7 @@ export const useTestStore = create((set, get) => ({
 
   // Primitive type selection (sub-tabs)
   selectedPrimitiveType: 'tools', // 'tools' | 'resources' | 'prompts' | 'chat' | 'apps' | 'evaluations'
+  lastNonEvaluationPrimitiveType: 'tools',
 
   // Tools
   tools: [],
@@ -251,7 +252,12 @@ export const useTestStore = create((set, get) => ({
 
   // Actions
   setTestMode: (mode) => set({ testMode: mode }),
-  setSelectedPrimitiveType: (type) => set({ selectedPrimitiveType: type }),
+  setSelectedPrimitiveType: (type) => set((state) => ({
+    selectedPrimitiveType: type,
+    lastNonEvaluationPrimitiveType: type === 'evaluations'
+      ? state.lastNonEvaluationPrimitiveType
+      : type,
+  })),
 
   setServerUrl: (url) => set({ serverUrl: url }),
   setTransportType: (type) => set({ transportType: type }),
