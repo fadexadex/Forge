@@ -11,7 +11,7 @@ import {
 
 const expectedToolCallSchema = z.object({
   toolName: z.string(),
-  expectedArgs: z.record(z.unknown()).default({}),
+  expectedArgs: z.record(z.unknown()).describe('Generate valid args based strictly on the schema provided in the user prompt.').default({}),
   argMatchMode: z.enum(['exact', 'subset', 'keys-only']).default('subset'),
   importance: z.enum(['required', 'optional']).default('required'),
   purpose: z.enum(['input', 'data', 'transform', 'visualize', 'export', 'other']).default('other'),
@@ -67,7 +67,8 @@ Rules:
 - expectedArgs should contain realistic, typed arguments when the schema makes them obvious.
 - expectedOutput should describe the user-visible result or app experience.
 - tags should be short labels like AI, NEG, multi-step, widget, retrieval, analysis.
-- Do not invent tools.`;
+- Do not invent tools.
+- For each expected tool call, you MUST provide EXACTLY the required parameters defined in its 'inputSchema'. Do not omit required fields. Do not add hallucinated fields.`;
 }
 
 function buildUserPrompt({ serverInfo, tools, resources, prompts, count, distribution }) {

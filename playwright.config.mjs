@@ -13,4 +13,9 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },
+  webServer: {
+    command: 'npm run preview -- --port 4173',
+    port: 4173,
+    reuseExistingServer: true,
+  },
 });
