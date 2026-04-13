@@ -66,7 +66,11 @@ function findLatestAssistantResponse(messages = []) {
 function findLatestError(messages = [], spans = []) {
   const traceError = [...spans].reverse().find((span) => span.kind === 'error');
   if (traceError?.payload?.output) {
-    return String(traceError.payload.output);
+    const output = traceError.payload.output;
+    if (typeof output === 'object') {
+      return output.message || JSON.stringify(output);
+    }
+    return String(output);
   }
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -74,7 +78,10 @@ function findLatestError(messages = [], spans = []) {
     if (message.role !== 'assistant') continue;
     const errorPart = (message.parts || []).find((part) => part.type === 'error' && part.text);
     if (errorPart?.text) {
-      return errorPart.text.replace(/^Error:\s*/i, '');
+      if (typeof errorPart.text === 'object') {
+        return errorPart.text.message || JSON.stringify(errorPart.text);
+      }
+      return String(errorPart.text).replace(/^Error:\s*/i, '');
     }
   }
 
@@ -210,9 +217,9 @@ function ExpectedArgsEditor({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-wrap gap-3">
       {schemaProperties.length === 0 ? (
-        <div className="rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-500">
+        <div className="w-full rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-500">
           This tool has no declared schema fields.
         </div>
       ) : (
@@ -231,7 +238,7 @@ function ExpectedArgsEditor({
 
           if (schema.type === 'boolean') {
             return (
-              <div key={name} className="border border-neutral-200 bg-white px-3 py-3">
+              <div key={name} className="flex-1 min-w-[280px] border border-neutral-200 bg-white px-3 py-3">
                 {label}
                 {schema.description ? (
                   <div className="mt-1 text-xs text-neutral-500">{schema.description}</div>
@@ -250,7 +257,7 @@ function ExpectedArgsEditor({
 
           if (schema.enum?.length) {
             return (
-              <div key={name} className="border border-neutral-200 bg-white px-3 py-3">
+              <div key={name} className="flex-1 min-w-[280px] border border-neutral-200 bg-white px-3 py-3">
                 {label}
                 {schema.description ? (
                   <div className="mt-1 text-xs text-neutral-500">{schema.description}</div>
@@ -273,7 +280,7 @@ function ExpectedArgsEditor({
 
           if (schema.type === 'object' || schema.type === 'array') {
             return (
-              <div key={name} className="border border-neutral-200 bg-white px-3 py-3">
+              <div key={name} className="w-full border border-neutral-200 bg-white px-3 py-3">
                 {label}
                 {schema.description ? (
                   <div className="mt-1 text-xs text-neutral-500">{schema.description}</div>
@@ -294,7 +301,7 @@ function ExpectedArgsEditor({
           }
 
           return (
-            <div key={name} className="border border-neutral-200 bg-white px-3 py-3">
+            <div key={name} className="flex-1 min-w-[280px] border border-neutral-200 bg-white px-3 py-3">
               {label}
               {schema.description ? (
                 <div className="mt-1 text-xs text-neutral-500">{schema.description}</div>
@@ -315,7 +322,7 @@ function ExpectedArgsEditor({
         })
       )}
 
-      <div className="border border-neutral-200 bg-neutral-50">
+      <div className="w-full border border-neutral-200 bg-neutral-50">
         <button
           type="button"
           onClick={() => setAdvancedOpen((value) => !value)}
@@ -361,7 +368,6 @@ export function EvaluationsPanel() {
     generationByScope,
     selectedScenarioIdByScope,
     selectScenario,
-    createScenario,
     updateScenario,
     duplicateScenario,
     addExpectedToolCall,
@@ -726,9 +732,6 @@ export function EvaluationsPanel() {
             <Button variant="outline" size="sm" onClick={() => duplicateScenario(selectedScenario.id)}>
               Duplicate
             </Button>
-            <Button variant="outline" size="sm" onClick={() => createScenario()}>
-              New Scenario
-            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -1071,13 +1074,19 @@ export function EvaluationsPanel() {
                   </div>
 
                   <div className="flex items-center gap-2 text-[12px] text-neutral-500">
-                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                      run.result === 'passed'
-                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                        : 'border-red-200 bg-red-50 text-red-700'
-                    }`}>
-                      {run.result === 'passed' ? 'Pass' : 'Fail'}
-                    </span>
+                    {run.status === 'running' ? (
+                      <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                        Running...
+                      </span>
+                    ) : (
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                        run.result === 'passed'
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : 'border-red-200 bg-red-50 text-red-700'
+                      }`}>
+                        {run.result === 'passed' ? 'Pass' : 'Fail'}
+                      </span>
+                    )}
                     <span>Path {Math.round((run.trajectory?.score || 0) * 100)}%</span>
                   </div>
                 </button>

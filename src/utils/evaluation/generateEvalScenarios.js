@@ -45,8 +45,7 @@ function createToolReference(tools = []) {
   return tools.map((tool) => ({
     name: tool.name,
     description: tool.description || '',
-    inputSchema: tool.inputSchema || { type: 'object', properties: {} },
-    widgetResourceUri: getToolWidgetResourceUri(tool),
+    inputSchema: tool.inputSchema || tool.schema || { type: 'object', properties: {} },
   }));
 }
 

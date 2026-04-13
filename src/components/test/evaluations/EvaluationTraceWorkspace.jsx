@@ -14,6 +14,50 @@ function prettyJson(value) {
   }
 }
 
+function JsonBlock({ value }) {
+  if (value == null) {
+    return (
+      <pre className="overflow-x-auto border border-neutral-200 bg-neutral-50 p-3 text-[12px] leading-relaxed text-neutral-700">
+        —
+      </pre>
+    );
+  }
+  
+  let jsonString;
+  try {
+    jsonString = JSON.stringify(value, null, 2);
+  } catch {
+    jsonString = String(value);
+  }
+
+  // Simple regex-based syntax highlighting for JSON
+  const coloredJson = jsonString.replace(
+    /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
+    (match) => {
+      let cls = 'text-[#D35400]'; // number
+      if (/^"/.test(match)) {
+        if (/:$/.test(match)) {
+          cls = 'text-[#2980B9] font-medium'; // key
+        } else {
+          cls = 'text-[#A67C00]'; // string
+        }
+      } else if (/true|false/.test(match)) {
+        cls = 'text-[#8E44AD] font-medium'; // boolean
+      } else if (/null/.test(match)) {
+        cls = 'text-[#7F8C8D] font-medium'; // null
+      }
+      return `<span class="${cls}">${match}</span>`;
+    }
+  );
+
+  return (
+    <pre 
+      className="overflow-x-auto border border-neutral-200 bg-neutral-50 p-3 text-[12px] leading-relaxed text-neutral-700"
+      dangerouslySetInnerHTML={{ __html: coloredJson }}
+    />
+  );
+}
+
 function tabButtonClasses(active) {
   return active
     ? 'border-neutral-900 bg-white text-neutral-900 shadow-sm'
@@ -46,16 +90,17 @@ function getSpanStatus(run, span) {
   const actualStatus = run.trajectory?.actualStepStatuses?.find(
     (entry) => entry.id === span.toolCallId
   );
+  if (run.status === 'running') {
+    const currentStatus = actualStatus?.status || span.status;
+    if (currentStatus === 'failed' || currentStatus === 'unexpected') {
+      return 'running';
+    }
+    return currentStatus || 'running';
+  }
   return actualStatus?.status || span.status || null;
 }
 
-function JsonBlock({ value }) {
-  return (
-    <pre className="overflow-x-auto border border-neutral-200 bg-neutral-50 p-3 text-[12px] leading-relaxed text-neutral-700">
-      {prettyJson(value)}
-    </pre>
-  );
-}
+
 
 function SpanHoverCard({ span, run, actualStatus }) {
   const totalTokens = run.usage?.totalTokens;
@@ -63,7 +108,7 @@ function SpanHoverCard({ span, run, actualStatus }) {
   return (
     <div
       data-testid="evaluation-trace-hover-preview"
-      className="absolute left-4 top-full z-20 mt-2 w-72 border border-neutral-200 bg-white p-3 shadow-[0_12px_40px_rgba(15,23,42,0.12)]"
+      className="absolute left-[calc(100%+16px)] top-0 z-20 min-w-[280px] rounded-md border border-neutral-200 bg-white p-3 shadow-lg"
     >
       <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
         Time
@@ -396,7 +441,7 @@ function ToolsView({ run, onOpenToolInBuilder, testMode }) {
       ) : (
         run.actualToolCalls.map((call) => {
           const actualStatus = run.trajectory?.actualStepStatuses?.find((entry) => entry.id === call.callId);
-          const expectedStatus = actualStatus?.status || (call.status === 'failed' ? 'failed' : 'unexpected');
+          const expectedStatus = run?.status === 'running' ? 'running' : (actualStatus?.status || (call.status === 'failed' ? 'failed' : 'unexpected'));
           const expectedStep = run.scenarioSnapshot?.expectedToolCalls?.find(
             (step) => step.id === actualStatus?.expectedStepId || step.toolName === call.toolName
           );
@@ -433,21 +478,6 @@ function ToolsView({ run, onOpenToolInBuilder, testMode }) {
                       Open Tool in Builder
                     </Button>
                   ) : null}
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <div>
-                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                    Expected args
-                  </div>
-                  <JsonBlock value={expectedStep?.expectedArgs || {}} />
-                </div>
-                <div>
-                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                    Actual args
-                  </div>
-                  <JsonBlock value={call.args} />
                 </div>
               </div>
 
@@ -567,25 +597,6 @@ export function EvaluationTraceWorkspace({
           {run.trajectory.explanation}
         </div>
       ) : null}
-
-      <div className="grid gap-px border-b border-neutral-200 bg-neutral-200 sm:grid-cols-2 xl:grid-cols-5">
-        {[
-          ['Coverage', run.trajectory?.coverageScore],
-          ['Arguments', run.trajectory?.argumentScore],
-          ['Order', run.trajectory?.orderScore],
-          ['Support tools', run.trajectory?.supportScore],
-          ['Output', run.outputEvaluation?.score],
-        ].map(([label, value]) => (
-          <div key={label} className="bg-white px-4 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-              {label}
-            </div>
-            <div className="mt-1 text-sm font-medium text-neutral-900">
-              {typeof value === 'number' ? `${Math.round(value * 100)}%` : '—'}
-            </div>
-          </div>
-        ))}
-      </div>
 
       <div className="border-b border-neutral-200 bg-[#FAFAF8] px-5 py-3">
         <div className="flex items-center gap-1 border border-neutral-200 bg-neutral-50 p-1">

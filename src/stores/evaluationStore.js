@@ -5,7 +5,6 @@ import { generateEvalScenarios } from '../utils/evaluation/generateEvalScenarios
 import {
   buildEvaluationScopeKey,
   buildToolSnapshotHash,
-  buildArgsFromSchema,
   getToolWidgetResourceUri,
   inferToolPurpose,
 } from '../utils/evaluation/helpers.js';
@@ -49,14 +48,7 @@ function createDefaultScenario(context = {}) {
     tags: [],
     scenarioText: 'Describe the use case to test.',
     userPrompt: '',
-    expectedToolCalls: firstTool
-      ? [createExpectedToolCall(
-          firstTool.name,
-          buildArgsFromSchema(firstTool.inputSchema || {}),
-          'keys-only',
-          { purpose: inferToolPurpose(firstTool.name) }
-        )]
-      : [],
+    expectedToolCalls: [],
     allowedToolNames: [],
     generationMetadata: {
       sourceKind: 'ai',
