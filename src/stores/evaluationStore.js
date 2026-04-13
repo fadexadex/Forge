@@ -497,21 +497,6 @@ export const useEvaluationStore = create(
         }
 
         const apiKey = useSettingsStore.getState().geminiApiKey;
-        if (!apiKey) {
-          set((state) => ({
-            generationByScope: {
-              ...state.generationByScope,
-              [scopeKey]: {
-                toolSnapshotHash,
-                status: 'missing_key',
-                batchId: existingGeneration?.batchId || null,
-                newCount: 0,
-                error: null,
-              },
-            },
-          }));
-          return;
-        }
 
         const batchId = generateId();
 
@@ -554,6 +539,9 @@ export const useEvaluationStore = create(
             const nextGeneratedScenarios = generatedScenarios.map((scenario) => (
               toScenarioRecord(scenario, context, batchId)
             ));
+            const usedFallback = nextGeneratedScenarios.some(
+              (scenario) => scenario.generationMetadata?.sourceKind === 'heuristic-fallback'
+            );
 
             const nextScenarios = [...retainedScenarios, ...nextGeneratedScenarios].sort(sortScenarios);
             const currentSelectedId = state.selectedScenarioIdByScope[scopeKey];
@@ -571,6 +559,7 @@ export const useEvaluationStore = create(
                   batchId,
                   newCount: nextGeneratedScenarios.length,
                   error: null,
+                  usedFallback,
                   lastGeneratedAt: nowIso(),
                 },
               },

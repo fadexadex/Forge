@@ -11,7 +11,7 @@ import {
 
 const expectedToolCallSchema = z.object({
   toolName: z.string(),
-  expectedArgs: z.record(z.unknown()).describe('Generate valid args based strictly on the schema provided in the user prompt.').default({}),
+  expectedArgs: z.object({}).catchall(z.unknown()).describe('Generate valid args based strictly on the schema provided in the user prompt.').default({}),
   argMatchMode: z.enum(['exact', 'subset', 'keys-only']).default('subset'),
   importance: z.enum(['required', 'optional']).default('required'),
   purpose: z.enum(['input', 'data', 'transform', 'visualize', 'export', 'other']).default('other'),
@@ -46,6 +46,9 @@ function createToolReference(tools = []) {
     name: tool.name,
     description: tool.description || '',
     inputSchema: tool.inputSchema || tool.schema || { type: 'object', properties: {} },
+    requiredFields: Array.isArray(tool.inputSchema?.required) ? tool.inputSchema.required : [],
+    emptyArgsTemplate: buildArgsFromSchema(tool.inputSchema || tool.schema || {}),
+    widgetResourceUri: getToolWidgetResourceUri(tool),
   }));
 }
 
@@ -464,12 +467,19 @@ export async function generateEvalScenarios({
     negative: 1,
   },
 }) {
+  const fallbackScenarios = buildFallbackScenarios({ tools, count });
   if (!apiKey) {
-    throw new Error('A Gemini API key is required to auto-generate evaluation scenarios.');
+    return fallbackScenarios.map((scenario) => ({
+      ...scenario,
+      passCriteria: {
+        minTrajectoryScore: clamp(0.75),
+        minOutputScore: clamp(0.7),
+        failOnUnexpectedTools: true,
+      },
+    }));
   }
 
   const google = createGoogleGenerativeAI({ apiKey });
-  const fallbackScenarios = buildFallbackScenarios({ tools, count });
 
   try {
     const result = await generateObject({
@@ -511,5 +521,6 @@ export async function generateEvalScenarios({
 
 export const __test = {
   buildFallbackScenarios,
+  createToolReference,
   normalizeGeneratedScenarios,
 };

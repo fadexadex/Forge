@@ -15,6 +15,15 @@ function badgeClasses(kind = 'default') {
   }
 }
 
+function SpinnerIcon() {
+  return (
+    <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" className="stroke-current opacity-20" strokeWidth="3" />
+      <path d="M21 12a9 9 0 0 0-9-9" className="stroke-current" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function EvaluationScenarioList() {
   const {
     currentScopeKey,
@@ -25,11 +34,13 @@ export function EvaluationScenarioList() {
     createScenario,
     deleteScenario,
     selectScenario,
+    generateScenariosForCurrentScope,
   } = useEvaluationStore();
 
   const scenarios = currentScopeKey ? (scenariosByScope[currentScopeKey] || []) : [];
   const selectedScenarioId = currentScopeKey ? selectedScenarioIdByScope[currentScopeKey] : null;
   const generationState = currentScopeKey ? generationByScope[currentScopeKey] : null;
+  const isGenerating = generationState?.status === 'generating';
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -42,25 +53,48 @@ export function EvaluationScenarioList() {
             {scenarios.length}
           </span>
         </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => createScenario()}
-          className="h-7 px-2 text-[11px]"
-        >
-          New
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={isGenerating}
+            onClick={() => generateScenariosForCurrentScope()}
+            className="h-7 px-2 text-[11px]"
+          >
+            <span className="flex items-center gap-1.5">
+              {isGenerating ? <SpinnerIcon /> : null}
+              <span>{isGenerating ? 'Generating...' : 'Generate'}</span>
+            </span>
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => createScenario()}
+            className="h-7 px-2 text-[11px]"
+          >
+            New
+          </Button>
+        </div>
       </div>
 
       {generationState?.status === 'generating' ? (
         <div className="mx-4 mb-2 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] text-neutral-600">
-          Generating evaluation scenarios in the background...
+          <div className="flex items-center gap-2">
+            <SpinnerIcon />
+            <span>Generating evaluation scenarios...</span>
+          </div>
+        </div>
+      ) : null}
+
+      {generationState?.usedFallback ? (
+        <div className="mx-4 mb-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+          Using demo fallback scenarios because Gemini was unavailable.
         </div>
       ) : null}
 
       {generationState?.status === 'missing_key' ? (
         <div className="mx-4 mb-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-          Configure a Gemini API key in Settings to auto-generate evaluations.
+          Configure a Gemini API key in Settings to auto-generate evaluations, or use the demo fallback scenarios.
         </div>
       ) : null}
 
